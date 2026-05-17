@@ -1,0 +1,29 @@
+[project]
+name = "ai-signal-radio"
+version = "0.1.0"
+description = "Collect AI news, write LLM-friendly wiki notes, and generate local radio-style briefings."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.1",
+]
+
+[project.scripts]
+ai-signal-radio = "ai_signal_radio.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

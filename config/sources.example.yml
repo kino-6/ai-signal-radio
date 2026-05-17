@@ -1,0 +1,30 @@
+sources:
+  - name: demo
+    type: demo
+    enabled: true
+    params: {}
+
+  - name: arxiv-ai
+    type: arxiv
+    enabled: false
+    params:
+      search_query: "cat:cs.AI OR cat:cs.CL OR cat:cs.LG"
+      max_results: 10
+
+  - name: hacker-news-ai
+    type: hackernews
+    enabled: false
+    params:
+      query: "AI"
+      limit: 10
+
+  - name: example-rss
+    type: rss
+    enabled: false
+    url: "https://example.com/feed.xml"
+    params: {}
+
+tts:
+  enabled: false
+  endpoint: "http://127.0.0.1:50021"
+  speaker: 1
