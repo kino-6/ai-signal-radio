@@ -55,6 +55,52 @@ INTONATION="${INTONATION:-1.0}"
 DAILY_AUDIO_WRITTEN="0"
 DEEP_AUDIO_WRITTEN="0"
 
+run_voicevox_tts() {
+  local label="$1"
+  local input="$2"
+  local output="$3"
+  shift 3
+
+  if [[ "$VOICEVOX" != "1" ]]; then
+    echo "==> Skipping $label audio because VOICEVOX=0."
+    return 1
+  fi
+
+  echo "==> Synthesizing $label audio with VOICEVOX"
+  if uv run ai-signal tts \
+    --input "$input" \
+    --output "$output" \
+    --speed "$SPEED" \
+    --pitch "$PITCH" \
+    --intonation "$INTONATION" \
+    "$@"
+  then
+    return 0
+  fi
+
+  echo "warning: VOICEVOX $label audio synthesis failed. Continuing without wav output." >&2
+  return 1
+}
+
+print_outputs() {
+  echo "==> Done"
+  echo "Daily script: data/scripts/daily.md"
+  echo "Daily TTS:    data/scripts/daily.tts.txt"
+  if [[ "$DEEP_DIVE" == "1" ]]; then
+    echo "Deep dive:    data/scripts/deep-dive.md"
+    echo "Deep TTS:     data/scripts/deep-dive.tts.txt"
+  fi
+  if [[ "$DAILY_AUDIO_WRITTEN" == "1" ]]; then
+    echo "Audio:        data/audio/daily.wav"
+  fi
+  if [[ "$DEEP_AUDIO_WRITTEN" == "1" ]]; then
+    echo "Deep audio:   data/audio/deep-dive.wav"
+  fi
+  if [[ "$DOCS" == "1" ]]; then
+    echo "Preview:      uv run mkdocs serve"
+  fi
+}
+
 echo "==> Running daily AI news pipeline"
 run_cmd=(
   uv run ai-signal run
@@ -74,22 +120,13 @@ uv run ai-signal tts-script \
   --output data/scripts/daily.tts.txt \
   --speaker "$SPEAKER"
 
-if [[ "$VOICEVOX" == "1" ]]; then
-  echo "==> Synthesizing daily audio with VOICEVOX"
-  if uv run ai-signal tts \
-    --input data/scripts/daily.tts.txt \
-    --output data/audio/daily.wav \
-    --speaker "$SPEAKER" \
-    --speed "$SPEED" \
-    --pitch "$PITCH" \
-    --intonation "$INTONATION"
-  then
-    DAILY_AUDIO_WRITTEN="1"
-  else
-    echo "warning: VOICEVOX daily audio synthesis failed. Continuing without wav output." >&2
-  fi
-else
-  echo "==> Skipping VOICEVOX audio because VOICEVOX=0."
+if run_voicevox_tts \
+  "daily" \
+  data/scripts/daily.tts.txt \
+  data/audio/daily.wav \
+  --speaker "$SPEAKER"
+then
+  DAILY_AUDIO_WRITTEN="1"
 fi
 
 if [[ "$DEEP_DIVE" == "1" ]]; then
@@ -107,19 +144,12 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
     --host-speaker "$HOST_SPEAKER" \
     --analyst-speaker "$ANALYST_SPEAKER"
 
-  if [[ "$VOICEVOX" == "1" ]]; then
-    echo "==> Synthesizing deep-dive audio with VOICEVOX"
-    if uv run ai-signal tts \
-      --input data/scripts/deep-dive.tts.txt \
-      --output data/audio/deep-dive.wav \
-      --speed "$SPEED" \
-      --pitch "$PITCH" \
-      --intonation "$INTONATION"
-    then
-      DEEP_AUDIO_WRITTEN="1"
-    else
-      echo "warning: VOICEVOX deep-dive audio synthesis failed. Continuing without wav output." >&2
-    fi
+  if run_voicevox_tts \
+    "deep-dive" \
+    data/scripts/deep-dive.tts.txt \
+    data/audio/deep-dive.wav
+  then
+    DEEP_AUDIO_WRITTEN="1"
   fi
 fi
 
@@ -128,19 +158,4 @@ if [[ "$DOCS" == "1" ]]; then
   uv run ai-signal docs
 fi
 
-echo "==> Done"
-echo "Daily script: data/scripts/daily.md"
-echo "Daily TTS:    data/scripts/daily.tts.txt"
-if [[ "$DEEP_DIVE" == "1" ]]; then
-  echo "Deep dive:    data/scripts/deep-dive.md"
-  echo "Deep TTS:     data/scripts/deep-dive.tts.txt"
-fi
-if [[ "$DAILY_AUDIO_WRITTEN" == "1" ]]; then
-  echo "Audio:        data/audio/daily.wav"
-fi
-if [[ "$DEEP_AUDIO_WRITTEN" == "1" ]]; then
-  echo "Deep audio:   data/audio/deep-dive.wav"
-fi
-if [[ "$DOCS" == "1" ]]; then
-  echo "Preview:      uv run mkdocs serve"
-fi
+print_outputs
