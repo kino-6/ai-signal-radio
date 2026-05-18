@@ -27,7 +27,26 @@ uv sync
 
 ## Best Current Run
 
-いまのおすすめ実行方法は、実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本まで一気に生成する流れです。
+いまのおすすめ実行方法は、Bash script にまとめています。実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本、TTS 用テキスト、deep dive 用台本、MkDocs preview まで生成します。
+
+```bash
+bash scripts/best-current-run.sh
+```
+
+VOICEVOX engine を起動している場合は、音声化までまとめて実行できます。
+
+```bash
+VOICEVOX=1 bash scripts/best-current-run.sh
+```
+
+よく使う調整は環境変数で指定できます。
+
+```bash
+LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+DEEP_DIVE=0 DOCS=0 bash scripts/best-current-run.sh
+```
+
+中で実行している主な流れは次の通りです。
 
 ```bash
 uv run ai-signal run \
@@ -36,50 +55,10 @@ uv run ai-signal run \
   --script-style briefing \
   --summarizer ollama \
   --ollama-model gemma4:latest
-```
-
-VOICEVOX engine を起動している場合は、続けて TTS 用テキストを確認してから音声化します。
-
-```bash
-uv run ai-signal tts-script \
-  --input data/scripts/daily.md \
-  --output data/scripts/daily.tts.txt
-
-uv run ai-signal tts \
-  --input data/scripts/daily.tts.txt \
-  --output data/audio/daily.wav \
-  --speaker 3 \
-  --speed 1.18 \
-  --pitch 0.0 \
-  --intonation 1.0
-```
-
-深掘りの掛け合い版を作る場合はこちらです。
-
-```bash
-uv run ai-signal script \
-  --input data/wiki \
-  --output data/scripts/deep-dive.md \
-  --style dialogue
-
-uv run ai-signal tts-script \
-  --input data/scripts/deep-dive.md \
-  --output data/scripts/deep-dive.tts.txt \
-  --speaker 3 \
-  --host-speaker 3 \
-  --analyst-speaker 8
-
-uv run ai-signal tts \
-  --input data/scripts/deep-dive.tts.txt \
-  --output data/audio/deep-dive.wav \
-  --speed 1.18
-```
-
-ブラウザで wiki / radio script を確認する場合は、プレビューを生成します。
-
-```bash
+uv run ai-signal tts-script --input data/scripts/daily.md --output data/scripts/daily.tts.txt
+uv run ai-signal script --input data/wiki --output data/scripts/deep-dive.md --style dialogue
+uv run ai-signal tts-script --input data/scripts/deep-dive.md --output data/scripts/deep-dive.tts.txt --speaker 3 --host-speaker 3 --analyst-speaker 8
 uv run ai-signal docs
-uv run mkdocs serve
 ```
 
 ## デモ実行
