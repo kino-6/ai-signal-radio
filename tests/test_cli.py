@@ -121,6 +121,83 @@ def test_tts_command_can_use_dialogue_speakers(tmp_path, monkeypatch) -> None:
     assert seen["speed_scale"] == 1.2
 
 
+def test_tts_script_command_writes_plain_speech_text(tmp_path) -> None:
+    script_path = tmp_path / "daily.md"
+    output_path = tmp_path / "daily.tts.txt"
+    script_path.write_text("# Daily\n\nAI と OpenAI のニュースです。", encoding="utf-8")
+
+    result = cli.tts_script_command(script_path, output_path)
+
+    assert result == output_path
+    text = output_path.read_text(encoding="utf-8")
+    assert "# Daily" not in text
+    assert "Daily" in text
+    assert "エーアイ" in text
+    assert "オープンエーアイ" in text
+
+
+def test_tts_script_command_writes_dialogue_speaker_blocks(tmp_path) -> None:
+    script_path = tmp_path / "deep-dive.md"
+    output_path = tmp_path / "deep-dive.tts.txt"
+    script_path.write_text(
+        "Host: AWS Bedrock を確認します。\nAnalyst: API の制限を見ます。",
+        encoding="utf-8",
+    )
+
+    result = cli.tts_script_command(
+        script_path,
+        output_path,
+        speaker=3,
+        host_speaker=3,
+        analyst_speaker=8,
+    )
+
+    assert result == output_path
+    text = output_path.read_text(encoding="utf-8")
+    assert "[speaker=3]" in text
+    assert "[speaker=8]" in text
+    assert "エーダブリューエス ベッドロック" in text
+    assert "エーピーアイ" in text
+
+
+def test_tts_command_reads_segmented_tts_script(tmp_path, monkeypatch) -> None:
+    script_path = tmp_path / "deep-dive.tts.txt"
+    output_path = tmp_path / "deep-dive.wav"
+    seen: dict[str, object] = {}
+    script_path.write_text(
+        "[speaker=3]\nホストの本文です。\n\n[speaker=8]\n分析側の本文です。",
+        encoding="utf-8",
+    )
+
+    class FakeVoicevoxClient:
+        def __init__(self, base_url: str) -> None:
+            seen["base_url"] = base_url
+
+        def healthcheck(self) -> bool:
+            return True
+
+        def synthesize_segments_to_wav(
+            self,
+            segments,
+            output_path: Path,
+            speed_scale: float = 1.0,
+            pitch_scale: float = 0.0,
+            intonation_scale: float = 1.0,
+        ) -> Path:
+            seen["segments"] = segments
+            output_path.write_bytes(b"RIFF")
+            return output_path
+
+    monkeypatch.setattr(cli, "VoicevoxClient", FakeVoicevoxClient)
+
+    result = cli.tts_command(script_path, output_path)
+
+    assert result == output_path
+    assert [segment.speaker for segment in seen["segments"]] == [3, 8]
+    assert seen["segments"][0].text == "ホストの本文です。"
+    assert seen["segments"][1].text == "分析側の本文です。"
+
+
 def test_main_prints_friendly_tts_error(monkeypatch, tmp_path, capsys) -> None:
     script_path = tmp_path / "daily.md"
     script_path.write_text("# Daily", encoding="utf-8")

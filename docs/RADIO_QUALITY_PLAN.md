@@ -40,7 +40,7 @@
 - [x] 英語タイトルを読み上げ用に短く言い換える
 - [x] `AI`, `LLM`, `API`, `SDK`, `Vercel`, `LangGraph` などを文脈内で読みやすく整形する
 - [x] カンマ抜け、括弧、記号、URL 由来のノイズを TTS 前に正規化する
-- [ ] `script` と `tts_script` を分け、Markdown と音声用テキストを別管理する
+- [x] `script` と `tts_script` を分け、Markdown と音声用テキストを別管理する
 - [ ] 話速、間、イントネーションの推奨 preset を docs に残す
 
 ### Phase 3: Semantic Dedupe And Topic Clustering

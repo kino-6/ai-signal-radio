@@ -38,10 +38,13 @@ from ai_signal_radio.storage import (
 )
 from ai_signal_radio.summarizers.ollama import OllamaSummarizer
 from ai_signal_radio.tts.voicevox import (
+    PronunciationPairs,
     VoicevoxClient,
     load_pronunciation_profile,
     markdown_to_speech_segments,
     markdown_to_speech_text,
+    parse_speech_segments,
+    render_speech_segments,
 )
 
 
@@ -108,6 +111,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         print(f"Wrote audio: {path}")
+        return 0
+    if args.command == "tts-script":
+        try:
+            path = tts_script_command(
+                input_path=args.input,
+                output_path=args.output,
+                config_path=args.config,
+                speaker=args.speaker,
+                host_speaker=args.host_speaker,
+                analyst_speaker=args.analyst_speaker,
+                pronunciation_profile=args.pronunciation_profile,
+            )
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Wrote TTS script: {path}")
         return 0
     if args.command == "run":
         result = run_command(
@@ -210,6 +229,33 @@ def build_parser() -> argparse.ArgumentParser:
     tts.add_argument("--intonation", type=float, default=None, help="VOICEVOX intonationScale.")
     tts.add_argument("--voicevox-url", default=None)
     tts.add_argument(
+        "--pronunciation-profile",
+        type=Path,
+        default=None,
+        help="Optional YAML profile for context-specific pronunciation replacements.",
+    )
+
+    tts_script = subparsers.add_parser(
+        "tts-script",
+        help="Write normalized TTS text from a Markdown radio script.",
+    )
+    tts_script.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
+    tts_script.add_argument("--input", type=Path, required=True)
+    tts_script.add_argument("--output", type=Path, default=Path("data/scripts/daily.tts.txt"))
+    tts_script.add_argument("--speaker", type=int, default=None, help="Default VOICEVOX speaker ID.")
+    tts_script.add_argument(
+        "--host-speaker",
+        type=int,
+        default=None,
+        help="Optional VOICEVOX speaker ID for dialogue lines starting with Host:",
+    )
+    tts_script.add_argument(
+        "--analyst-speaker",
+        type=int,
+        default=None,
+        help="Optional VOICEVOX speaker ID for dialogue lines starting with Analyst:",
+    )
+    tts_script.add_argument(
         "--pronunciation-profile",
         type=Path,
         default=None,
@@ -343,6 +389,43 @@ def docs_command(
     )
 
 
+def tts_script_command(
+    input_path: Path,
+    output_path: Path,
+    config_path: Path = Path("config/sources.example.yml"),
+    speaker: int | None = None,
+    host_speaker: int | None = None,
+    analyst_speaker: int | None = None,
+    pronunciation_profile: Path | None = None,
+) -> Path:
+    config = load_config(config_path) if config_path.exists() else AppConfig()
+    speaker = speaker if speaker is not None else config.tts.speaker
+    profile_path = _resolve_pronunciation_profile(
+        config=config,
+        config_path=config_path,
+        pronunciation_profile=pronunciation_profile,
+    )
+    pronunciations = _load_pronunciations_or_raise(profile_path)
+    markdown = input_path.read_text(encoding="utf-8")
+    role_speakers = _role_speakers(host_speaker=host_speaker, analyst_speaker=analyst_speaker)
+
+    if role_speakers:
+        speech_text = render_speech_segments(
+            markdown_to_speech_segments(
+                markdown,
+                default_speaker=speaker,
+                role_speakers=role_speakers,
+                pronunciations=pronunciations,
+            )
+        )
+    else:
+        speech_text = markdown_to_speech_text(markdown, pronunciations=pronunciations)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(f"{speech_text.rstrip()}\n", encoding="utf-8")
+    return output_path
+
+
 def tts_command(
     input_path: Path,
     output_path: Path,
@@ -365,11 +448,11 @@ def tts_command(
     intonation_scale = (
         intonation_scale if intonation_scale is not None else tts_config.intonation_scale
     )
-    profile_path = pronunciation_profile
-    if profile_path is None and tts_config.pronunciation_profile:
-        profile_path = Path(tts_config.pronunciation_profile)
-        if not profile_path.is_absolute() and not profile_path.exists():
-            profile_path = config_path.parent / profile_path
+    profile_path = _resolve_pronunciation_profile(
+        config=config,
+        config_path=config_path,
+        pronunciation_profile=pronunciation_profile,
+    )
 
     client = VoicevoxClient(base_url=voicevox_url)
     if not client.healthcheck():
@@ -379,18 +462,17 @@ def tts_command(
             "VOICEVOX アプリを起動してから `uv run ai-signal tts ...` を再実行します。"
         )
     markdown = input_path.read_text(encoding="utf-8")
-    try:
-        pronunciations = load_pronunciation_profile(profile_path)
-    except (OSError, ValueError) as exc:
-        raise RuntimeError(f"pronunciation profile を読み込めません: {profile_path}: {exc}") from exc
-    role_speakers = {
-        role: speaker_id
-        for role, speaker_id in {
-            "host": host_speaker,
-            "analyst": analyst_speaker,
-        }.items()
-        if speaker_id is not None
-    }
+    pronunciations = _load_pronunciations_or_raise(profile_path)
+    parsed_segments = parse_speech_segments(markdown)
+    if parsed_segments:
+        return client.synthesize_segments_to_wav(
+            parsed_segments,
+            output_path,
+            speed_scale=speed_scale,
+            pitch_scale=pitch_scale,
+            intonation_scale=intonation_scale,
+        )
+    role_speakers = _role_speakers(host_speaker=host_speaker, analyst_speaker=analyst_speaker)
     if role_speakers:
         speech_segments = markdown_to_speech_segments(
             markdown,
@@ -414,6 +496,37 @@ def tts_command(
         pitch_scale=pitch_scale,
         intonation_scale=intonation_scale,
     )
+
+
+def _resolve_pronunciation_profile(
+    config: AppConfig,
+    config_path: Path,
+    pronunciation_profile: Path | None,
+) -> Path | None:
+    profile_path = pronunciation_profile
+    if profile_path is None and config.tts.pronunciation_profile:
+        profile_path = Path(config.tts.pronunciation_profile)
+        if not profile_path.is_absolute() and not profile_path.exists():
+            profile_path = config_path.parent / profile_path
+    return profile_path
+
+
+def _load_pronunciations_or_raise(profile_path: Path | None) -> PronunciationPairs:
+    try:
+        return load_pronunciation_profile(profile_path)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"pronunciation profile を読み込めません: {profile_path}: {exc}") from exc
+
+
+def _role_speakers(host_speaker: int | None, analyst_speaker: int | None) -> dict[str, int]:
+    return {
+        role: speaker_id
+        for role, speaker_id in {
+            "host": host_speaker,
+            "analyst": analyst_speaker,
+        }.items()
+        if speaker_id is not None
+    }
 
 
 def run_command(

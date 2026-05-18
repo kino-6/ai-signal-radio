@@ -6,6 +6,8 @@ from ai_signal_radio.tts.voicevox import (
     markdown_to_speech_text,
     normalize_for_tts,
     normalize_symbols_for_tts,
+    parse_speech_segments,
+    render_speech_segments,
     split_for_tts_text,
 )
 
@@ -119,6 +121,22 @@ Analyst: API の制限を見ます。
         SpeechSegment(text="エーピーアイ の制限を見ます。", speaker=8),
         SpeechSegment(text="地の文です。", speaker=3),
     ]
+
+
+def test_render_and_parse_speech_segments_roundtrip() -> None:
+    segments = [
+        SpeechSegment(text="ホストの本文です。", speaker=3),
+        SpeechSegment(text="分析側の本文です。", speaker=8),
+    ]
+
+    rendered = render_speech_segments(segments)
+
+    assert rendered == "[speaker=3]\nホストの本文です。\n\n[speaker=8]\n分析側の本文です。"
+    assert parse_speech_segments(rendered) == segments
+
+
+def test_parse_speech_segments_ignores_plain_text() -> None:
+    assert parse_speech_segments("これは普通の読み上げテキストです。") == []
 
 
 def test_load_pronunciation_profile_reads_optional_yaml(tmp_path) -> None:

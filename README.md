@@ -183,6 +183,18 @@ tts:
 
 固有名詞の読み替えは文脈や分野で揺れやすいため、グローバルな読み方辞書は持ちません。必要なときだけ、番組・分野ごとの任意 pronunciation profile を指定します。
 
+Markdown の台本と、VOICEVOX に渡す読み上げ用テキストは分けて生成できます。まず TTS 用テキストを確認し、必要なら手で直してから音声化します。
+
+```bash
+uv run ai-signal tts-script \
+  --input data/scripts/daily.md \
+  --output data/scripts/daily.tts.txt
+
+uv run ai-signal tts \
+  --input data/scripts/daily.tts.txt \
+  --output data/audio/daily.wav
+```
+
 読み替えを試す場合は、任意の YAML profile を指定できます。
 
 ```bash
@@ -197,12 +209,16 @@ deep dive の掛け合い台本では、`Host:` と `Analyst:` の行だけ別 s
 
 ```bash
 uv run ai-signal script --input data/wiki --output data/scripts/deep-dive.md --style dialogue
-uv run ai-signal tts \
+uv run ai-signal tts-script \
   --input data/scripts/deep-dive.md \
-  --output data/audio/deep-dive.wav \
+  --output data/scripts/deep-dive.tts.txt \
   --speaker 3 \
   --host-speaker 3 \
   --analyst-speaker 8
+uv run ai-signal tts \
+  --input data/scripts/deep-dive.tts.txt \
+  --output data/audio/deep-dive.wav \
+  --speed 1.18
 ```
 
 VOICEVOX engine が起動していない場合は、CLI が接続先 URL と起動確認のメッセージを出します。

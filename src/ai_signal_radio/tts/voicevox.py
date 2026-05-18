@@ -231,6 +231,48 @@ def markdown_to_speech_segments(
     return _merge_adjacent_segments(segments)
 
 
+def render_speech_segments(segments: list[SpeechSegment]) -> str:
+    """Render speaker-aware speech text for review and later synthesis."""
+
+    blocks = [
+        f"[speaker={segment.speaker}]\n{segment.text.strip()}"
+        for segment in segments
+        if segment.text.strip()
+    ]
+    return "\n\n".join(blocks).strip()
+
+
+def parse_speech_segments(text: str) -> list[SpeechSegment]:
+    """Parse the speaker block format emitted by render_speech_segments."""
+
+    segments: list[SpeechSegment] = []
+    current_speaker: int | None = None
+    current_lines: list[str] = []
+    saw_header = False
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        header = re.match(r"^\[speaker=(\d+)\]$", line)
+        if header:
+            if current_speaker is not None and current_lines:
+                segments.append(
+                    SpeechSegment(text="\n".join(current_lines).strip(), speaker=current_speaker)
+                )
+            current_speaker = int(header.group(1))
+            current_lines = []
+            saw_header = True
+            continue
+        if current_speaker is None:
+            if line:
+                return []
+            continue
+        current_lines.append(raw_line.rstrip())
+
+    if current_speaker is not None and current_lines:
+        segments.append(SpeechSegment(text="\n".join(current_lines).strip(), speaker=current_speaker))
+    return [segment for segment in segments if segment.text] if saw_header else []
+
+
 def normalize_symbols_for_tts(text: str) -> str:
     """Remove Markdown and punctuation noise before local TTS."""
 
