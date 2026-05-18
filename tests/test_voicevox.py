@@ -1,6 +1,8 @@
 from ai_signal_radio.tts.voicevox import (
+    SpeechSegment,
     apply_pronunciations,
     load_pronunciation_profile,
+    markdown_to_speech_segments,
     markdown_to_speech_text,
     normalize_for_tts,
     normalize_symbols_for_tts,
@@ -96,6 +98,27 @@ def test_markdown_to_speech_text_normalizes_dialogue_labels() -> None:
 
     assert "ホスト、エーダブリューエス ベッドロック、エーピーアイ、を確認します。" in text
     assert "アナリスト、シーアイ シーディー と キューエー も見ます。" in text
+
+
+def test_markdown_to_speech_segments_assigns_dialogue_speakers() -> None:
+    markdown = """# Deep Dive
+
+Host: AWS Bedrock を確認します。
+Analyst: API の制限を見ます。
+地の文です。
+"""
+
+    segments = markdown_to_speech_segments(
+        markdown,
+        default_speaker=3,
+        role_speakers={"host": 3, "analyst": 8},
+    )
+
+    assert segments == [
+        SpeechSegment(text="Deep Dive\nエーダブリューエス ベッドロック を確認します。", speaker=3),
+        SpeechSegment(text="エーピーアイ の制限を見ます。", speaker=8),
+        SpeechSegment(text="地の文です。", speaker=3),
+    ]
 
 
 def test_load_pronunciation_profile_reads_optional_yaml(tmp_path) -> None:

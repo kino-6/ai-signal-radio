@@ -106,7 +106,7 @@ Analyst: 開発者目線では、アクセシビリティ API に依存する設
 
 ## Later Questions
 
-- [ ] Host / Analyst を VOICEVOX の別 speaker に割り当てるか
+- [x] Host / Analyst を VOICEVOX の別 speaker に割り当てるか
 - [ ] deep dive を daily 実行時に必ず作るか、手動コマンドにするか
 - [ ] Ollama model ごとに script 品質差を比較するか
 - [ ] audio metadata と MkDocs への音声リンクをどう扱うか

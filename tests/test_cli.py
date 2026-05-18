@@ -74,6 +74,53 @@ pronunciations:
     assert "ボイスボックス" in str(seen["text"])
 
 
+def test_tts_command_can_use_dialogue_speakers(tmp_path, monkeypatch) -> None:
+    script_path = tmp_path / "deep-dive.md"
+    output_path = tmp_path / "deep-dive.wav"
+    seen: dict[str, object] = {}
+    script_path.write_text(
+        "Host: AWS Bedrock を確認します。\nAnalyst: API の制限を見ます。",
+        encoding="utf-8",
+    )
+
+    class FakeVoicevoxClient:
+        def __init__(self, base_url: str) -> None:
+            seen["base_url"] = base_url
+
+        def healthcheck(self) -> bool:
+            return True
+
+        def synthesize_segments_to_wav(
+            self,
+            segments,
+            output_path: Path,
+            speed_scale: float = 1.0,
+            pitch_scale: float = 0.0,
+            intonation_scale: float = 1.0,
+        ) -> Path:
+            seen["segments"] = segments
+            seen["speed_scale"] = speed_scale
+            output_path.write_bytes(b"RIFF")
+            return output_path
+
+    monkeypatch.setattr(cli, "VoicevoxClient", FakeVoicevoxClient)
+
+    result = cli.tts_command(
+        script_path,
+        output_path,
+        speaker=3,
+        host_speaker=3,
+        analyst_speaker=8,
+        speed_scale=1.2,
+    )
+
+    assert result == output_path
+    assert [segment.speaker for segment in seen["segments"]] == [3, 8]
+    assert "エーダブリューエス ベッドロック" in seen["segments"][0].text
+    assert "エーピーアイ" in seen["segments"][1].text
+    assert seen["speed_scale"] == 1.2
+
+
 def test_main_prints_friendly_tts_error(monkeypatch, tmp_path, capsys) -> None:
     script_path = tmp_path / "daily.md"
     script_path.write_text("# Daily", encoding="utf-8")

@@ -193,6 +193,18 @@ uv run ai-signal tts \
   --pronunciation-profile config/pronunciations.example.yml
 ```
 
+deep dive の掛け合い台本では、`Host:` と `Analyst:` の行だけ別 speaker にできます。
+
+```bash
+uv run ai-signal script --input data/wiki --output data/scripts/deep-dive.md --style dialogue
+uv run ai-signal tts \
+  --input data/scripts/deep-dive.md \
+  --output data/audio/deep-dive.wav \
+  --speaker 3 \
+  --host-speaker 3 \
+  --analyst-speaker 8
+```
+
 VOICEVOX engine が起動していない場合は、CLI が接続先 URL と起動確認のメッセージを出します。
 
 ## テスト

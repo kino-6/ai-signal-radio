@@ -5,6 +5,7 @@ VOICEVOX is optional for the MVP. The demo command does not use this client.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import io
 import json
 import re
@@ -16,6 +17,12 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import yaml
+
+
+@dataclass(frozen=True)
+class SpeechSegment:
+    text: str
+    speaker: int
 
 
 class VoicevoxClient:
@@ -82,6 +89,37 @@ class VoicevoxClient:
             )
             for chunk in chunks
         ]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if len(audio_chunks) == 1:
+            output_path.write_bytes(audio_chunks[0])
+        else:
+            _write_joined_wav(audio_chunks, output_path)
+        return output_path
+
+    def synthesize_segments_to_wav(
+        self,
+        segments: list[SpeechSegment],
+        output_path: Path,
+        speed_scale: float = 1.15,
+        pitch_scale: float = 0.0,
+        intonation_scale: float = 1.0,
+    ) -> Path:
+        audio_chunks: list[bytes] = []
+        for segment in segments:
+            for chunk in split_for_tts_text(segment.text):
+                audio_chunks.append(
+                    self.synthesis(
+                        self.audio_query(
+                            chunk,
+                            segment.speaker,
+                            speed_scale=speed_scale,
+                            pitch_scale=pitch_scale,
+                            intonation_scale=intonation_scale,
+                        ),
+                        segment.speaker,
+                    )
+                )
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if len(audio_chunks) == 1:
             output_path.write_bytes(audio_chunks[0])
@@ -162,6 +200,37 @@ def markdown_to_speech_text(markdown: str, pronunciations: PronunciationPairs = 
     return "\n".join(lines)
 
 
+def markdown_to_speech_segments(
+    markdown: str,
+    default_speaker: int,
+    role_speakers: dict[str, int],
+    pronunciations: PronunciationPairs = (),
+) -> list[SpeechSegment]:
+    segments: list[SpeechSegment] = []
+    in_frontmatter = False
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if line == "---":
+            in_frontmatter = not in_frontmatter
+            continue
+        if in_frontmatter or not line:
+            continue
+        line = re.sub(r"^#+\s*", "", line)
+        line = re.sub(r"^[-*]\s+", "", line)
+        line = re.sub(r"`([^`]+)`", r"\1", line)
+        speaker = default_speaker
+        role_match = re.match(r"^(Host|Analyst):\s*(.+)$", line, flags=re.IGNORECASE)
+        if role_match:
+            role = role_match.group(1).lower()
+            speaker = role_speakers.get(role, default_speaker)
+            line = role_match.group(2)
+        line = normalize_symbols_for_tts(line)
+        text = normalize_for_tts(line, pronunciations)
+        if text:
+            segments.append(SpeechSegment(text=text, speaker=speaker))
+    return _merge_adjacent_segments(segments)
+
+
 def normalize_symbols_for_tts(text: str) -> str:
     """Remove Markdown and punctuation noise before local TTS."""
 
@@ -198,6 +267,20 @@ def apply_pronunciations(text: str, pronunciations: PronunciationPairs = ()) -> 
     for term, reading in pronunciations:
         converted = converted.replace(term, reading)
     return converted
+
+
+def _merge_adjacent_segments(segments: list[SpeechSegment]) -> list[SpeechSegment]:
+    merged: list[SpeechSegment] = []
+    for segment in segments:
+        if merged and merged[-1].speaker == segment.speaker:
+            previous = merged[-1]
+            merged[-1] = SpeechSegment(
+                text=f"{previous.text}\n{segment.text}",
+                speaker=previous.speaker,
+            )
+        else:
+            merged.append(segment)
+    return merged
 
 
 def _pronunciation_pair(entry: Any) -> tuple[str, str] | None:

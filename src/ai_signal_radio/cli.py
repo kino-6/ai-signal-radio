@@ -40,6 +40,7 @@ from ai_signal_radio.summarizers.ollama import OllamaSummarizer
 from ai_signal_radio.tts.voicevox import (
     VoicevoxClient,
     load_pronunciation_profile,
+    markdown_to_speech_segments,
     markdown_to_speech_text,
 )
 
@@ -95,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
                 output_path=args.output,
                 config_path=args.config,
                 speaker=args.speaker,
+                host_speaker=args.host_speaker,
+                analyst_speaker=args.analyst_speaker,
                 speed_scale=args.speed,
                 pitch_scale=args.pitch,
                 intonation_scale=args.intonation,
@@ -190,6 +193,18 @@ def build_parser() -> argparse.ArgumentParser:
     tts.add_argument("--input", type=Path, required=True)
     tts.add_argument("--output", type=Path, default=Path("data/audio/daily.wav"))
     tts.add_argument("--speaker", type=int, default=None, help="VOICEVOX speaker ID. 3 is Zundamon.")
+    tts.add_argument(
+        "--host-speaker",
+        type=int,
+        default=None,
+        help="Optional VOICEVOX speaker ID for dialogue lines starting with Host:",
+    )
+    tts.add_argument(
+        "--analyst-speaker",
+        type=int,
+        default=None,
+        help="Optional VOICEVOX speaker ID for dialogue lines starting with Analyst:",
+    )
     tts.add_argument("--speed", type=float, default=None, help="VOICEVOX speedScale.")
     tts.add_argument("--pitch", type=float, default=None, help="VOICEVOX pitchScale.")
     tts.add_argument("--intonation", type=float, default=None, help="VOICEVOX intonationScale.")
@@ -333,6 +348,8 @@ def tts_command(
     output_path: Path,
     config_path: Path = Path("config/sources.example.yml"),
     speaker: int | None = None,
+    host_speaker: int | None = None,
+    analyst_speaker: int | None = None,
     speed_scale: float | None = None,
     pitch_scale: float | None = None,
     intonation_scale: float | None = None,
@@ -366,10 +383,29 @@ def tts_command(
         pronunciations = load_pronunciation_profile(profile_path)
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"pronunciation profile を読み込めません: {profile_path}: {exc}") from exc
-    speech_text = markdown_to_speech_text(
-        markdown,
-        pronunciations=pronunciations,
-    )
+    role_speakers = {
+        role: speaker_id
+        for role, speaker_id in {
+            "host": host_speaker,
+            "analyst": analyst_speaker,
+        }.items()
+        if speaker_id is not None
+    }
+    if role_speakers:
+        speech_segments = markdown_to_speech_segments(
+            markdown,
+            default_speaker=speaker,
+            role_speakers=role_speakers,
+            pronunciations=pronunciations,
+        )
+        return client.synthesize_segments_to_wav(
+            speech_segments,
+            output_path,
+            speed_scale=speed_scale,
+            pitch_scale=pitch_scale,
+            intonation_scale=intonation_scale,
+        )
+    speech_text = markdown_to_speech_text(markdown, pronunciations=pronunciations)
     return client.synthesize_to_wav(
         speech_text,
         output_path,
