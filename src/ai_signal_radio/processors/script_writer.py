@@ -94,6 +94,10 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
     if len(display_notes) != len(notes):
         lines.extend([f"収集した {len(notes)} 件を、重複する話題をまとめて {len(display_notes)} トピックに整理しました。", ""])
 
+    focus_line = daily_focus_line(display_notes)
+    if focus_line:
+        lines.extend([focus_line, ""])
+
     bias_line = source_bias_line(display_notes)
     if bias_line:
         lines.extend([bias_line, ""])
@@ -167,31 +171,48 @@ def render_dialogue_script(notes: list[WikiNote]) -> str:
         return "\n".join(lines)
 
     note = display_notes[0]
+    question = first_open_question(note)
     lines.extend(
         [
             f"今日のテーマは「{radio_headline(note)}」です。",
             "",
-            f"Host: {source_line(note)} まず事実から整理します。",
+            "Analyst: まず、これは何が起きた話ですか？",
+            "",
+            f"Host: {source_line(note)} {one_line_takeaway(note)}",
             "",
             "## 事実",
             "",
-            f"Host: {note.fact_summary}",
+            f"Host: {fact_line(note)}",
             "",
             "## 解釈",
             "",
-            f"Analyst: ここからは解釈です。{note.interpretation}",
+            "Analyst: それは、AI開発者にとってなぜ重要なんでしょう？",
             "",
-            f"Analyst: 深掘り候補にした理由は、{deep_dive_reason(note)}",
+            f"Host: {why_it_matters_answer(note)}",
+            "",
+            "Analyst: 深掘り候補にした理由も確認しておきたいです。",
+            "",
+            f"Host: {deep_dive_reason(note)}",
             "",
             "## 試す価値",
             "",
-            f"Host: 開発者目線の次の一手は、{first_action(note)}",
+            "Analyst: では、次にどこを見るとよさそうですか？",
+            "",
+            f"Host: {listen_action_line(note)}",
             "",
         ]
     )
-    question = first_open_question(note)
     if question:
-        lines.extend(["## 未確認事項", "", f"Analyst: まだ確認が必要な点は、{question}", ""])
+        lines.extend(
+            [
+                "## 未確認事項",
+                "",
+                "Analyst: まだ確認が必要な点はありますか？",
+                "",
+                f"Host: {question}",
+                "",
+            ]
+        )
     if note.related_titles:
         lines.extend(
             [
@@ -247,6 +268,17 @@ def source_type_label(source_type: str) -> str:
     if normalized == "rss":
         return "RSS"
     return source_type or "単一ソース"
+
+
+def daily_focus_line(notes: list[WikiNote]) -> str:
+    candidate = deep_dive_candidate(notes)
+    if not candidate:
+        return ""
+    takeaway = one_line_takeaway(candidate)
+    headline = radio_headline(candidate)
+    if _same_spoken_content(headline, takeaway):
+        return f"今日はこれだけ覚えてください。{headline}です。"
+    return f"今日はこれだけ覚えてください。{headline}。{takeaway}"
 
 
 def deep_dive_candidate(notes: list[WikiNote]) -> WikiNote | None:
@@ -349,10 +381,25 @@ def one_line_takeaway(note: WikiNote) -> str:
     return _ensure_sentence(note.one_line_takeaway) if note.one_line_takeaway else first_sentence(note.fact_summary)
 
 
+def fact_line(note: WikiNote) -> str:
+    if _contains_japanese(note.fact_summary):
+        return first_sentence(note.fact_summary)
+    return one_line_takeaway(note)
+
+
 def why_it_matters_line(note: WikiNote) -> str:
     if note.why_it_matters:
         return _ensure_sentence(note.why_it_matters)
     return concise_interpretation_line(note)
+
+
+def why_it_matters_answer(note: WikiNote) -> str:
+    if note.why_it_matters:
+        return _ensure_sentence(note.why_it_matters)
+    if not note.interpretation.strip():
+        return "元情報を確認して判断します。"
+    interpretation = first_sentence(note.interpretation)
+    return re.sub(r"^(この事例|このツール|これは|この動き)は、?", "", interpretation)
 
 
 def listen_action_line(note: WikiNote) -> str:
@@ -401,6 +448,10 @@ def _same_spoken_content(left: str, right: str) -> bool:
 
 def _normalize_spoken_text(text: str) -> str:
     return re.sub(r"\W+", "", text.lower())
+
+
+def _contains_japanese(text: str) -> bool:
+    return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text))
 
 
 def _ensure_sentence(text: str) -> str:

@@ -108,6 +108,7 @@ def test_render_script_supports_briefing_style() -> None:
 
     script = render_script(notes, style="briefing")
 
+    assert "今日はこれだけ覚えてください。" in script
     assert "まずは上位 2 件だけを押さえて、そのあと 2 件を一言で拾います。" in script
     assert "## 一言ニュース" in script
     assert "Show HN:" not in script
@@ -193,12 +194,15 @@ def test_dialogue_style_renders_deep_dive() -> None:
     assert "今日のテーマは「Sova AIのモバイルエージェントがGoogle Playで却下」です。" in script
     assert "Host:" in script
     assert "Analyst:" in script
+    assert "Analyst: まず、これは何が起きた話ですか？" in script
+    assert "Analyst: それは、AI開発者にとってなぜ重要なんでしょう？" in script
+    assert "Analyst: では、次にどこを見るとよさそうですか？" in script
     assert "## 事実" in script
     assert "## 解釈" in script
     assert "## 試す価値" in script
     assert "## 未確認事項" in script
-    assert "ここからは解釈です。" in script
-    assert "まだ確認が必要な点は、Google Playの審査基準を確認する。" in script
+    assert "Host: モバイルAIエージェントの境界に関わる話です。" in script
+    assert "Host: Google Playの審査基準を確認する。" in script
     assert "関連投稿 2 件をまとめて見ています。" in script
 
 
@@ -271,6 +275,28 @@ def test_briefing_prefers_radio_note_fields() -> None:
     assert "長い解釈です。" not in script
 
 
+def test_briefing_opens_with_single_focus_takeaway() -> None:
+    note = WikiNote(
+        title="Focus topic",
+        source="example-rss",
+        source_url="https://example.com/focus",
+        source_type="rss",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        tags=("ai",),
+        fact_summary="重要な更新です。",
+        interpretation="重要です。",
+        action_items=("確認する",),
+        spoken_title="今日の本命ニュース",
+        one_line_takeaway="AIエージェントの権限管理を見る回です。",
+        score=10.0,
+    )
+
+    script = render_script([note], style="briefing")
+
+    assert "今日はこれだけ覚えてください。今日の本命ニュース。AIエージェントの権限管理を見る回です。" in script
+
+
 def test_briefing_mentions_when_source_mix_is_biased() -> None:
     notes = [
         WikiNote(
@@ -337,3 +363,54 @@ def test_briefing_selects_deep_dive_candidate_by_score_and_cluster() -> None:
     assert "詳細は深掘り版で扱います。" in script
     assert "score breakdown" not in script
     assert "source type" not in script
+
+
+def test_dialogue_deep_dive_reason_uses_human_language() -> None:
+    note = WikiNote(
+        title="Important clustered topic",
+        source="hacker-news-ai",
+        source_url="https://example.com/b",
+        source_type="hackernews",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        tags=("ai",),
+        fact_summary="重要な話題です。",
+        interpretation="影響が大きいです。",
+        action_items=("試す",),
+        score=8.0,
+        score_reasons=("keyword_score=4.0", "hn_points_bonus=2.0"),
+        topic_cluster_id="topic-important",
+        topic_cluster_label="Important",
+        topic_cluster_size=3,
+        topic_cluster_representative=True,
+    )
+
+    script = render_script([note], style="dialogue")
+
+    assert "関連投稿が 3 件あり、単発ではない動きに見える" in script
+    assert "Hacker News 発で開発者の反応を追いやすい" in script
+    assert "AI関連キーワードの重みが高いこと" in script
+    assert "score breakdown" not in script
+    assert "keyword_score" not in script
+    assert "source type" not in script
+
+
+def test_dialogue_uses_radio_takeaway_when_fact_summary_is_not_japanese() -> None:
+    note = WikiNote(
+        title="English fact topic",
+        source="demo",
+        source_url="https://example.com/english",
+        source_type="demo",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        tags=("ai",),
+        fact_summary="A project added benchmark support.",
+        interpretation="開発者に関係します。",
+        action_items=("確認する",),
+        one_line_takeaway="AI評価ベンチマークの更新です。",
+    )
+
+    script = render_script([note], style="dialogue")
+
+    assert "Host: AI評価ベンチマークの更新です。" in script
+    assert "Host: A project added benchmark support." not in script
