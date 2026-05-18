@@ -14,10 +14,12 @@ from ai_signal_radio.collectors.base import BaseCollector, CollectionError, Demo
 from ai_signal_radio.collectors.hackernews import HackerNewsCollector
 from ai_signal_radio.collectors.rss import RssCollector
 from ai_signal_radio.config import AppConfig, RankerConfig, SourceConfig, load_config
+from ai_signal_radio.docs_preview import DocsPreviewResult, build_mkdocs_preview
 from ai_signal_radio.models import NewsItem, PipelineResult
 from ai_signal_radio.processors.dedupe import DedupeResult, dedupe_items, dedupe_items_with_report
 from ai_signal_radio.processors.ranker import rank_items
 from ai_signal_radio.processors.script_writer import write_script
+from ai_signal_radio.processors.topic_cluster import cluster_items
 from ai_signal_radio.processors.wiki_writer import (
     Summarizer,
     load_wiki_notes,
@@ -30,6 +32,7 @@ from ai_signal_radio.storage import (
     load_raw_items,
     save_dedupe_report,
     save_processed_items,
+    save_run_metadata,
     save_raw_items,
     timestamp_slug,
 )
@@ -71,6 +74,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "script":
         path = script_command(input_path=args.input, output_path=args.output, style=args.style)
         print(f"Wrote script: {path}")
+        return 0
+    if args.command == "docs":
+        result = docs_command(
+            wiki_dir=args.wiki,
+            script_path=args.script,
+            output_dir=args.output,
+            processed_path=args.processed,
+        )
+        print(f"Wrote MkDocs preview: {result.index_path}")
+        print(f"Copied wiki notes: {result.copied_note_count}")
+        print(f"Copied topic pages: {result.copied_topic_count}")
+        if result.radio_path:
+            print(f"Copied radio script: {result.radio_path}")
         return 0
     if args.command == "tts":
         try:
@@ -158,10 +174,16 @@ def build_parser() -> argparse.ArgumentParser:
     script.add_argument("--output", type=Path, required=True)
     script.add_argument(
         "--style",
-        choices=("short", "standard", "detailed"),
+        choices=("short", "standard", "detailed", "briefing", "dialogue"),
         default="standard",
         help="Control script length and detail.",
     )
+
+    docs = subparsers.add_parser("docs", help="Generate ignored MkDocs preview pages.")
+    docs.add_argument("--wiki", type=Path, default=Path("data/wiki"))
+    docs.add_argument("--script", type=Path, default=Path("data/scripts/daily.md"))
+    docs.add_argument("--processed", type=Path, default=Path("data/processed/latest.json"))
+    docs.add_argument("--output", type=Path, default=Path("docs/generated"))
 
     tts = subparsers.add_parser("tts", help="Synthesize a Markdown script with local VOICEVOX.")
     tts.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
@@ -201,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_summarizer_args(run)
     run.add_argument(
         "--script-style",
-        choices=("short", "standard", "detailed"),
+        choices=("short", "standard", "detailed", "briefing", "dialogue"),
         default="standard",
         help="Control generated radio script length and detail.",
     )
@@ -216,7 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_summarizer_args(rebuild)
     rebuild.add_argument(
         "--script-style",
-        choices=("short", "standard", "detailed"),
+        choices=("short", "standard", "detailed", "briefing", "dialogue"),
         default="standard",
         help="Control generated radio script length and detail.",
     )
@@ -292,6 +314,20 @@ def script_command(input_path: Path, output_path: Path, style: str = "standard")
     return write_script(notes, output_path, style=style)
 
 
+def docs_command(
+    wiki_dir: Path = Path("data/wiki"),
+    script_path: Path = Path("data/scripts/daily.md"),
+    output_dir: Path = Path("docs/generated"),
+    processed_path: Path | None = Path("data/processed/latest.json"),
+) -> DocsPreviewResult:
+    return build_mkdocs_preview(
+        wiki_dir=wiki_dir,
+        script_path=script_path,
+        output_dir=output_dir,
+        processed_path=processed_path,
+    )
+
+
 def tts_command(
     input_path: Path,
     output_path: Path,
@@ -356,7 +392,10 @@ def run_command(
     script_style: str = "standard",
 ) -> PipelineResult:
     config = load_config(config_path) if config_path.exists() else AppConfig()
-    collected = collect_all(build_collectors(config.sources, source_filter=source_filter), limit=limit)
+    collected, collection_failures = collect_all_with_report(
+        build_collectors(config.sources, source_filter=source_filter),
+        limit=limit,
+    )
     dedupe_result, ranked, processed = _process_items(
         collected,
         limit=limit,
@@ -380,6 +419,16 @@ def run_command(
     raw_path = save_raw_items(collected, data_dir, run_id=run_id)
     processed_path = save_processed_items(processed, data_dir, run_id=run_id)
     dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_metadata_path = save_run_metadata(
+        _run_metadata(
+            collected=collected,
+            processed=processed,
+            collection_failures=collection_failures,
+            run_id=run_id,
+        ),
+        data_dir,
+        run_id,
+    )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
@@ -397,6 +446,7 @@ def run_command(
         script_path=str(script_path),
         processed_path=str(processed_path),
         dedupe_report_path=str(dedupe_report_path),
+        run_metadata_path=str(run_metadata_path),
     )
 
 
@@ -415,6 +465,11 @@ def rebuild_command(
     run_id = timestamp_slug()
     processed_path = save_processed_items(processed, data_dir, run_id=run_id)
     dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_metadata_path = save_run_metadata(
+        _run_metadata(collected=items, processed=processed, collection_failures=[], run_id=run_id),
+        data_dir,
+        run_id,
+    )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
@@ -432,6 +487,7 @@ def rebuild_command(
         script_path=str(script_path),
         processed_path=str(processed_path),
         dedupe_report_path=str(dedupe_report_path),
+        run_metadata_path=str(run_metadata_path),
     )
 
 
@@ -443,6 +499,11 @@ def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResu
     raw_path = save_raw_items(collected, data_dir, run_id=run_id)
     processed_path = save_processed_items(processed, data_dir, run_id=run_id)
     dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_metadata_path = save_run_metadata(
+        _run_metadata(collected=collected, processed=processed, collection_failures=[], run_id=run_id),
+        data_dir,
+        run_id,
+    )
     wiki_path, script_path = _write_pipeline_outputs(processed, data_dir, run_id=run_id)
     return PipelineResult(
         collected_count=len(collected),
@@ -453,6 +514,7 @@ def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResu
         script_path=str(script_path),
         processed_path=str(processed_path),
         dedupe_report_path=str(dedupe_report_path),
+        run_metadata_path=str(run_metadata_path),
     )
 
 
@@ -489,7 +551,7 @@ def _process_items(
 ) -> tuple[DedupeResult, list[NewsItem], list[NewsItem]]:
     dedupe_result = dedupe_items_with_report(items)
     ranked = rank_items(dedupe_result.selected_items, limit=limit, config=ranker_config)
-    processed = _with_dedupe_notes(ranked, dedupe_result)
+    processed = cluster_items(_with_dedupe_notes(ranked, dedupe_result))
     return dedupe_result, ranked, processed
 
 
@@ -544,6 +606,8 @@ def build_collectors(
                     source.url,
                     timeout_seconds=_timeout_seconds(source),
                     rate_limit_seconds=_rate_limit_seconds(source),
+                    retry_count=_retry_count(source),
+                    retry_backoff_seconds=_retry_backoff_seconds(source),
                 )
             )
         elif source.type == "arxiv":
@@ -556,6 +620,8 @@ def build_collectors(
                     max_results=int(source.params.get("max_results", 20)),
                     timeout_seconds=_timeout_seconds(source),
                     rate_limit_seconds=_rate_limit_seconds(source),
+                    retry_count=_retry_count(source, default=1),
+                    retry_backoff_seconds=_retry_backoff_seconds(source, default=2.0),
                 )
             )
         elif source.type == "hackernews":
@@ -582,20 +648,71 @@ def build_summarizer(name: str, ollama_model: str, ollama_url: str):
 
 
 def collect_all(collectors: list[BaseCollector], limit: int) -> list[NewsItem]:
+    items, _ = collect_all_with_report(collectors, limit)
+    return items
+
+
+def collect_all_with_report(
+    collectors: list[BaseCollector], limit: int
+) -> tuple[list[NewsItem], list[dict[str, str]]]:
     items: list[NewsItem] = []
+    failures: list[dict[str, str]] = []
     for collector in collectors:
         if collector.rate_limit_seconds:
             time.sleep(collector.rate_limit_seconds)
         try:
             items.extend(collector.collect(limit=limit))
         except CollectionError as exc:
+            failures.append(
+                {
+                    "source": collector.source_name,
+                    "error_type": "CollectionError",
+                    "message": str(exc),
+                }
+            )
             print(f"warning: {collector.source_name}: {exc}; continuing with other sources")
         except Exception as exc:  # noqa: BLE001
+            failures.append(
+                {
+                    "source": collector.source_name,
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            )
             print(
                 f"warning: {collector.source_name}: unexpected collector failure: {exc}; "
                 "continuing with other sources"
             )
-    return items
+    return items, failures
+
+
+def _run_metadata(
+    collected: list[NewsItem],
+    processed: list[NewsItem],
+    collection_failures: list[dict[str, str]],
+    run_id: str,
+) -> dict[str, object]:
+    return {
+        "run_id": run_id,
+        "collection_failures": collection_failures,
+        "source_coverage": {
+            "collected": _source_coverage(collected),
+            "selected": _source_coverage(processed),
+        },
+    }
+
+
+def _source_coverage(items: list[NewsItem]) -> dict[str, object]:
+    by_source: dict[str, int] = {}
+    by_source_type: dict[str, int] = {}
+    for item in items:
+        by_source[item.source] = by_source.get(item.source, 0) + 1
+        by_source_type[item.source_type] = by_source_type.get(item.source_type, 0) + 1
+    return {
+        "total": len(items),
+        "by_source": dict(sorted(by_source.items())),
+        "by_source_type": dict(sorted(by_source_type.items())),
+    }
 
 
 def _timeout_seconds(source: SourceConfig) -> int:
@@ -604,6 +721,14 @@ def _timeout_seconds(source: SourceConfig) -> int:
 
 def _rate_limit_seconds(source: SourceConfig) -> float:
     return float(source.params.get("rate_limit_seconds", 0.0))
+
+
+def _retry_count(source: SourceConfig, default: int = 0) -> int:
+    return int(source.params.get("retry_count", default))
+
+
+def _retry_backoff_seconds(source: SourceConfig, default: float = 1.0) -> float:
+    return float(source.params.get("retry_backoff_seconds", default))
 
 
 def _print_preview(collected: list[NewsItem], ranked: list[NewsItem]) -> None:
@@ -628,5 +753,7 @@ def _print_result(result: PipelineResult) -> None:
         print(f"Processed JSON: {result.processed_path}")
     if result.dedupe_report_path:
         print(f"Dedupe report: {result.dedupe_report_path}")
+    if result.run_metadata_path:
+        print(f"Run metadata: {result.run_metadata_path}")
     print(f"Wiki notes: {result.wiki_path}")
     print(f"Radio script: {result.script_path}")

@@ -37,6 +37,12 @@ def test_render_wiki_note_contains_frontmatter_and_sections() -> None:
     assert "## Source Coverage" in markdown
     assert "## Dedupe Notes" in markdown
     assert "## Open Questions" in markdown
+    assert "## Topic Cluster" in markdown
+    assert "## Deep Dive Notes" in markdown
+    assert "### Background" in markdown
+    assert "### Technical Questions" in markdown
+    assert "### Try Next" in markdown
+    assert "### Unknowns" in markdown
     assert "## Source" in markdown
 
 
@@ -61,6 +67,7 @@ def test_write_wiki_notes_creates_daily_markdown_files(tmp_path) -> None:
     assert notes[0].title == "Local AI Briefing Tool Ships"
     assert notes[0].source == "demo"
     assert notes[0].dedupe_notes
+    assert notes[0].topic_cluster_size == 1
 
 
 def test_write_wiki_notes_can_write_under_run_id(tmp_path) -> None:

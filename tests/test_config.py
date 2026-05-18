@@ -25,3 +25,23 @@ tts:
     assert config.tts.pitch_scale == 0.02
     assert config.tts.intonation_scale == 1.1
     assert config.tts.pronunciation_profile == "config/pronunciations.yml"
+
+
+def test_load_config_reads_ranker_source_diversity(tmp_path) -> None:
+    path = tmp_path / "sources.yml"
+    path.write_text(
+        """
+ranker:
+  min_source_types:
+    arxiv: 2
+    rss: 1
+  max_source_types:
+    hackernews: 2
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.ranker.min_source_types == {"arxiv": 2, "rss": 1}
+    assert config.ranker.max_source_types == {"hackernews": 2}

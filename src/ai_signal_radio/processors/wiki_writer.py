@@ -59,6 +59,13 @@ def note_from_item(item: NewsItem) -> WikiNote:
         or f"canonical_key={item.canonical_key}; content_hash={item.content_hash}."
     )
     score_reasons = _score_reasons(item)
+    cluster = _topic_cluster(item)
+    source_coverage = f"Single item from {item.source} ({item.source_type})."
+    if cluster["size"] > 1:
+        source_coverage = (
+            f"Topic cluster '{cluster['label']}' includes {cluster['size']} related item(s) "
+            f"from {', '.join(cluster['related_sources']) or item.source}."
+        )
     return WikiNote(
         title=item.title,
         source=item.source,
@@ -74,10 +81,16 @@ def note_from_item(item: NewsItem) -> WikiNote:
             "Decide whether this should update the project watch list.",
         ),
         score_reasons=score_reasons,
-        source_coverage=f"Single item from {item.source} ({item.source_type}).",
+        source_coverage=source_coverage,
         dedupe_notes=dedupe_note,
         open_questions=("不明",),
         score=item.score,
+        topic_cluster_id=cluster["id"],
+        topic_cluster_label=cluster["label"],
+        topic_cluster_size=cluster["size"],
+        topic_cluster_representative=cluster["is_representative"],
+        related_titles=cluster["related_titles"],
+        related_sources=cluster["related_sources"],
     )
 
 
@@ -96,6 +109,12 @@ def render_wiki_note(note: WikiNote) -> str:
             "source_coverage": note.source_coverage,
             "dedupe_notes": note.dedupe_notes,
             "open_questions": list(note.open_questions),
+            "topic_cluster_id": note.topic_cluster_id,
+            "topic_cluster_label": note.topic_cluster_label,
+            "topic_cluster_size": note.topic_cluster_size,
+            "topic_cluster_representative": note.topic_cluster_representative,
+            "related_titles": list(note.related_titles),
+            "related_sources": list(note.related_sources),
         },
         sort_keys=False,
         allow_unicode=True,
@@ -122,6 +141,21 @@ def render_wiki_note(note: WikiNote) -> str:
         "## Dedupe Notes\n\n"
         f"{note.dedupe_notes or '不明'}\n\n"
         "## Open Questions\n\n"
+        f"{open_questions}\n\n"
+        "## Topic Cluster\n\n"
+        f"- ID: {note.topic_cluster_id or '不明'}\n"
+        f"- Label: {note.topic_cluster_label or '不明'}\n"
+        f"- Size: {note.topic_cluster_size}\n"
+        f"- Representative: {note.topic_cluster_representative}\n"
+        f"- Related titles: {', '.join(note.related_titles) or 'なし'}\n\n"
+        "## Deep Dive Notes\n\n"
+        "### Background\n\n"
+        f"{note.fact_summary}\n\n"
+        "### Technical Questions\n\n"
+        f"{open_questions}\n\n"
+        "### Try Next\n\n"
+        f"{action_items}\n\n"
+        "### Unknowns\n\n"
         f"{open_questions}\n\n"
         "## Source\n\n"
         f"- Source: {note.source}\n"
@@ -285,6 +319,27 @@ def _dedupe_notes(item: NewsItem) -> str:
         reasons = sorted({str(group.get("reason", "unknown")) for group in groups if isinstance(group, dict)})
         return f"Retained over {duplicate_count} duplicate(s): {', '.join(reasons) or '不明'}."
     return f"Retained over {duplicate_count} duplicate(s)."
+
+
+def _topic_cluster(item: NewsItem) -> dict[str, object]:
+    cluster = item.metadata.get("topic_cluster")
+    if not isinstance(cluster, dict):
+        return {
+            "id": "",
+            "label": "",
+            "size": 1,
+            "is_representative": True,
+            "related_titles": (),
+            "related_sources": (item.source,),
+        }
+    return {
+        "id": str(cluster.get("id", "")),
+        "label": str(cluster.get("label", "")),
+        "size": int(cluster.get("size", 1) or 1),
+        "is_representative": bool(cluster.get("is_representative", True)),
+        "related_titles": tuple(str(title) for title in cluster.get("related_titles", ())),
+        "related_sources": tuple(str(source) for source in cluster.get("related_sources", ())),
+    }
 
 
 def write_wiki(items: list[NewsItem], output_dir: Path, now: datetime | None = None) -> Path:

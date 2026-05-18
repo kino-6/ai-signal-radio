@@ -15,6 +15,8 @@ class ArxivCollector(RssCollector):
         max_results: int = 20,
         timeout_seconds: int = 15,
         rate_limit_seconds: float = 0.0,
+        retry_count: int = 1,
+        retry_backoff_seconds: float = 2.0,
     ) -> None:
         query = urlencode(
             {
@@ -30,4 +32,6 @@ class ArxivCollector(RssCollector):
             timeout_seconds=timeout_seconds,
             rate_limit_seconds=rate_limit_seconds,
             source_type="arxiv",
+            retry_count=retry_count,
+            retry_backoff_seconds=retry_backoff_seconds,
         )

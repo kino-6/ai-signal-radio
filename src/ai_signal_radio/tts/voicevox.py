@@ -9,6 +9,7 @@ import io
 import json
 import re
 import wave
+import html
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -90,6 +91,34 @@ class VoicevoxClient:
 
 
 PronunciationPairs = tuple[tuple[str, str], ...]
+DEFAULT_TECHNICAL_PRONUNCIATIONS: PronunciationPairs = (
+    ("Hacker News", "ハッカーニュース"),
+    ("AWS Bedrock", "エーダブリューエス ベッドロック"),
+    ("Vercel AI SDK", "バーセル エーアイ エスディーケー"),
+    ("Hugging Face", "ハギングフェイス"),
+    ("LangGraph", "ランググラフ"),
+    ("CI/CD", "シーアイ シーディー"),
+    ("VOICEVOX", "ボイスボックス"),
+    ("OpenHarness", "オープンハーネス"),
+    ("OpenAI", "オープンエーアイ"),
+    ("Anthropic", "アンソロピック"),
+    ("Gemini", "ジェミニ"),
+    ("Android", "アンドロイド"),
+    ("SQLite", "エスキューライト"),
+    ("Postgres", "ポストグレス"),
+    ("Redis", "レディス"),
+    ("Ollama", "オラマ"),
+    ("Claude", "クロード"),
+    ("arXiv", "アーカイブ"),
+    ("LLM", "エルエルエム"),
+    ("API", "エーピーアイ"),
+    ("SDK", "エスディーケー"),
+    ("OS", "オーエス"),
+    ("QA", "キューエー"),
+    ("Host", "ホスト"),
+    ("Analyst", "アナリスト"),
+    ("AI", "エーアイ"),
+)
 
 
 def load_pronunciation_profile(path: Path | None) -> PronunciationPairs:
@@ -128,8 +157,40 @@ def markdown_to_speech_text(markdown: str, pronunciations: PronunciationPairs = 
         line = re.sub(r"^#+\s*", "", line)
         line = re.sub(r"^[-*]\s+", "", line)
         line = re.sub(r"`([^`]+)`", r"\1", line)
-        lines.append(apply_pronunciations(line, pronunciations))
+        line = normalize_symbols_for_tts(line)
+        lines.append(normalize_for_tts(line, pronunciations))
     return "\n".join(lines)
+
+
+def normalize_symbols_for_tts(text: str) -> str:
+    """Remove Markdown and punctuation noise before local TTS."""
+
+    converted = html.unescape(text)
+    converted = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", converted)
+    converted = re.sub(r"https?://\S+", "リンク", converted)
+    converted = re.sub(r"^\d+\.\s*", "", converted)
+    converted = converted.replace("&", "アンド")
+    converted = re.sub(r"\s*[:：]\s*", "、", converted)
+    converted = re.sub(r"\s*[,，]\s*", "、", converted)
+    converted = re.sub(r"[()（）]", "、", converted)
+    converted = re.sub(r"[\"“”]", "", converted)
+    converted = re.sub(r"、{2,}", "、", converted)
+    converted = re.sub(r"\s+", " ", converted)
+    converted = re.sub(r"\s*([、。！？])\s*", r"\1", converted)
+    return converted.strip(" 、")
+
+
+def normalize_for_tts(text: str, pronunciations: PronunciationPairs = ()) -> str:
+    """Apply context profile first, then conservative technical defaults."""
+
+    converted = apply_pronunciations(text, pronunciations)
+    user_terms = {term for term, _ in pronunciations}
+    defaults = tuple(
+        (term, reading)
+        for term, reading in DEFAULT_TECHNICAL_PRONUNCIATIONS
+        if term not in user_terms
+    )
+    return apply_pronunciations(converted, defaults)
 
 
 def apply_pronunciations(text: str, pronunciations: PronunciationPairs = ()) -> str:

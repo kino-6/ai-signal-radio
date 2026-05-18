@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
+import time
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
@@ -20,17 +21,19 @@ class RssCollector(BaseCollector):
         timeout_seconds: int = 15,
         rate_limit_seconds: float = 0.0,
         source_type: str = "rss",
+        retry_count: int = 0,
+        retry_backoff_seconds: float = 1.0,
     ) -> None:
         super().__init__(source_name, rate_limit_seconds=rate_limit_seconds)
         self.url = url
         self.timeout_seconds = timeout_seconds
         self.source_type = source_type
+        self.retry_count = max(0, retry_count)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
 
     def collect(self, limit: int = 20) -> list[NewsItem]:
         try:
-            request = Request(self.url, headers={"User-Agent": "ai-signal/0.1"})
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                content = response.read()
+            content = self._fetch_with_retry()
             root = ElementTree.fromstring(content)
         except Exception as exc:  # noqa: BLE001
             raise CollectionError(f"failed to fetch or parse RSS/Atom feed: {exc}") from exc
@@ -39,6 +42,22 @@ class RssCollector(BaseCollector):
         if not items:
             items = _parse_atom(root, self.source_name, self.source_type)
         return items[:limit]
+
+    def _fetch_with_retry(self) -> bytes:
+        last_error: Exception | None = None
+        for attempt in range(self.retry_count + 1):
+            try:
+                request = Request(self.url, headers={"User-Agent": "ai-signal/0.1"})
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    return response.read()
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if attempt >= self.retry_count:
+                    break
+                time.sleep(self.retry_backoff_seconds * (2**attempt))
+        if last_error is not None:
+            raise last_error
+        raise CollectionError("failed to fetch RSS/Atom feed")
 
 
 def _parse_rss(root: ElementTree.Element, source_name: str, source_type: str = "rss") -> list[NewsItem]:

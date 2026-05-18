@@ -30,7 +30,7 @@ def rank_items(
     ranker_config = config or RankerConfig()
     scored = [_with_score_breakdown(item, ranker_config) for item in items]
     ordered = sorted(scored, key=_sort_key, reverse=True)
-    return _select_with_source_diversity(ordered, limit)
+    return _select_with_source_diversity(ordered, limit, ranker_config)
 
 
 def score_item(item: NewsItem, config: RankerConfig | None = None) -> float:
@@ -81,7 +81,9 @@ def _with_score_breakdown(item: NewsItem, config: RankerConfig) -> NewsItem:
     return replace(item, score=float(breakdown["total"]), metadata=metadata)
 
 
-def _select_with_source_diversity(items: list[NewsItem], limit: int) -> list[NewsItem]:
+def _select_with_source_diversity(
+    items: list[NewsItem], limit: int, config: RankerConfig
+) -> list[NewsItem]:
     if limit <= 0:
         return []
     if len(items) <= limit:
@@ -90,14 +92,14 @@ def _select_with_source_diversity(items: list[NewsItem], limit: int) -> list[New
     selected: list[NewsItem] = []
     selected_ids: set[str] = set()
 
-    min_by_type = _minimum_source_type_counts(items, limit)
+    min_by_type = _minimum_source_type_counts(items, limit, config)
     for source_type, minimum in min_by_type.items():
         for item in _items_of_type(items, source_type):
             if _source_type_count(selected, source_type) >= minimum:
                 break
             _append_if_room(selected, selected_ids, item, limit)
 
-    max_by_type = _maximum_source_type_counts(limit)
+    max_by_type = _maximum_source_type_counts(limit, config)
     for item in items:
         if item.id in selected_ids:
             continue
@@ -108,26 +110,46 @@ def _select_with_source_diversity(items: list[NewsItem], limit: int) -> list[New
         if len(selected) >= limit:
             break
 
-    # If diversity caps leave empty seats, fill them with the best remaining items.
+    # If diversity caps leave empty seats, fill them with the best remaining
+    # items only when there is no other source type to balance against.
+    source_types = {item.source_type for item in items}
+    relax_caps = len(source_types) <= 1
     for item in items:
         if len(selected) >= limit:
             break
+        type_limit = max_by_type.get(item.source_type)
+        if (
+            not relax_caps
+            and type_limit is not None
+            and _source_type_count(selected, item.source_type) >= type_limit
+        ):
+            continue
         _append_if_room(selected, selected_ids, item, limit)
 
     return sorted(selected, key=_sort_key, reverse=True)
 
 
-def _minimum_source_type_counts(items: list[NewsItem], limit: int) -> dict[str, int]:
+def _minimum_source_type_counts(
+    items: list[NewsItem], limit: int, config: RankerConfig
+) -> dict[str, int]:
     minimums: dict[str, int] = {}
-    if limit >= 3 and any(item.source_type == "arxiv" for item in items):
-        minimums["arxiv"] = 1
+    if limit < 2:
+        return minimums
+    available_types = {item.source_type for item in items}
+    for source_type, count in config.min_source_types.items():
+        if source_type in available_types:
+            minimums[source_type] = min(count, limit)
     return minimums
 
 
-def _maximum_source_type_counts(limit: int) -> dict[str, int]:
-    if limit >= 4:
-        return {"hackernews": max(1, min(3, limit - 1))}
-    return {}
+def _maximum_source_type_counts(limit: int, config: RankerConfig) -> dict[str, int]:
+    if limit < 2:
+        return {}
+    return {
+        source_type: max(1, min(count, limit))
+        for source_type, count in config.max_source_types.items()
+        if count > 0
+    }
 
 
 def _items_of_type(items: list[NewsItem], source_type: str) -> list[NewsItem]:

@@ -36,6 +36,8 @@ class RankerConfig:
     research_bonus: float = 2.0
     hn_points_divisor: float = 100.0
     hn_points_cap: float = 3.0
+    min_source_types: dict[str, int] = field(default_factory=lambda: {"arxiv": 1})
+    max_source_types: dict[str, int] = field(default_factory=lambda: {"hackernews": 3})
 
 
 @dataclass(frozen=True)
@@ -92,4 +94,18 @@ def _load_ranker(raw: dict[str, Any]) -> RankerConfig:
         research_bonus=float(raw.get("research_bonus", 2.0)),
         hn_points_divisor=float(raw.get("hn_points_divisor", 100.0)),
         hn_points_cap=float(raw.get("hn_points_cap", 3.0)),
+        min_source_types=_int_mapping(raw.get("min_source_types"), {"arxiv": 1}),
+        max_source_types=_int_mapping(raw.get("max_source_types"), {"hackernews": 3}),
     )
+
+
+def _int_mapping(value: Any, default: dict[str, int]) -> dict[str, int]:
+    if value is None:
+        return dict(default)
+    if not isinstance(value, dict):
+        raise ValueError("source type diversity config must be a mapping")
+    return {
+        str(key).strip().lower(): max(0, int(count))
+        for key, count in value.items()
+        if str(key).strip()
+    }

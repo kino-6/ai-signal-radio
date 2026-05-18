@@ -144,6 +144,12 @@ class WikiNote:
     dedupe_notes: str = ""
     open_questions: tuple[str, ...] = field(default_factory=tuple)
     score: float = 0.0
+    topic_cluster_id: str = ""
+    topic_cluster_label: str = ""
+    topic_cluster_size: int = 1
+    topic_cluster_representative: bool = True
+    related_titles: tuple[str, ...] = field(default_factory=tuple)
+    related_sources: tuple[str, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -162,6 +168,12 @@ class WikiNote:
             "dedupe_notes": self.dedupe_notes,
             "open_questions": list(self.open_questions),
             "score": self.score,
+            "topic_cluster_id": self.topic_cluster_id,
+            "topic_cluster_label": self.topic_cluster_label,
+            "topic_cluster_size": self.topic_cluster_size,
+            "topic_cluster_representative": self.topic_cluster_representative,
+            "related_titles": list(self.related_titles),
+            "related_sources": list(self.related_sources),
         }
 
     @classmethod
@@ -182,6 +194,12 @@ class WikiNote:
             dedupe_notes=str(data.get("dedupe_notes", "")),
             open_questions=tuple(str(item) for item in data.get("open_questions", ())),
             score=float(data.get("score", 0.0)),
+            topic_cluster_id=str(data.get("topic_cluster_id", "")),
+            topic_cluster_label=str(data.get("topic_cluster_label", "")),
+            topic_cluster_size=int(data.get("topic_cluster_size", 1) or 1),
+            topic_cluster_representative=bool(data.get("topic_cluster_representative", True)),
+            related_titles=tuple(str(item) for item in data.get("related_titles", ())),
+            related_sources=tuple(str(item) for item in data.get("related_sources", ())),
         )
 
 
@@ -196,6 +214,7 @@ class PipelineResult:
     processed_path: str | None = None
     dedupe_report_path: str | None = None
     audio_path: str | None = None
+    run_metadata_path: str | None = None
 
 
 def _stable_id(source: str, url: str, title: str) -> str:
