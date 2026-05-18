@@ -31,7 +31,7 @@
 - [x] 上位 3 件は深めに、残りは一言ニュースにする
 - [x] 冒頭で「今日の流れ」を 1 文で伝える
 - [x] 各ニュースの source line を「Hacker News より」「arXiv より」のように自然にする
-- [ ] score / source_type / points をもとに、読み上げる情報量を調整する
+- [x] score / source_type / points をもとに、読み上げる情報量を調整する
 - [x] 締めに「今日の実装観点」を 1 つだけ入れる
 
 ### Phase 2: TTS Readability

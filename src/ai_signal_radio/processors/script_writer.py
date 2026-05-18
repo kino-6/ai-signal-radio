@@ -10,6 +10,7 @@ from ai_signal_radio.processors.headline import spoken_headline
 
 ScriptStyle = str
 SUPPORTED_STYLES = {"short", "standard", "detailed", "briefing", "dialogue"}
+BRIEFING_MAIN_TOPIC_LIMIT = 2
 
 
 def write_script(notes: list[WikiNote], output_path: Path, style: ScriptStyle = "standard") -> Path:
@@ -97,12 +98,12 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
     if bias_line:
         lines.extend([bias_line, ""])
 
-    main_notes = display_notes[:3]
-    quick_notes = display_notes[3:]
+    main_notes = display_notes[:BRIEFING_MAIN_TOPIC_LIMIT]
+    quick_notes = display_notes[BRIEFING_MAIN_TOPIC_LIMIT:]
     if quick_notes:
         lines.extend(
             [
-                f"まずは上位 {len(main_notes)} 件を少し詳しく見て、そのあと {len(quick_notes)} 件を短く拾います。",
+                f"まずは上位 {len(main_notes)} 件だけを押さえて、そのあと {len(quick_notes)} 件を一言で拾います。",
                 "",
             ]
         )
@@ -116,9 +117,9 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
                 "",
                 source_line(note),
                 "",
-                note.fact_summary,
+                first_sentence(note.fact_summary),
                 "",
-                note.interpretation,
+                concise_interpretation_line(note),
                 "",
                 f"見るポイントは、{first_action(note)}",
                 "",
@@ -143,7 +144,7 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
                 "",
                 f"{spoken_headline(candidate)}を深掘り候補にします。",
                 "",
-                f"理由は、{deep_dive_reason(candidate)}",
+                daily_deep_dive_reason(candidate),
                 "",
             ]
         )
@@ -234,7 +235,7 @@ def source_bias_line(notes: list[WikiNote]) -> str:
     if count / len(notes) < 0.75:
         return ""
     label = source_type_label(source_type)
-    return f"今日は {label} 中心の回です。別ソースの取得状況は run metadata に残しています。"
+    return f"今日は {label} 中心の回です。別ソースの取得状況は取得ログに残しています。"
 
 
 def source_type_label(source_type: str) -> str:
@@ -266,12 +267,11 @@ def deep_dive_score(note: WikiNote) -> tuple[float, int, int, float]:
 
 def deep_dive_reason(note: WikiNote) -> str:
     reasons: list[str] = []
-    if note.score:
-        reasons.append(f"スコアが {note.score:g}")
     if note.topic_cluster_size > 1:
-        reasons.append(f"関連投稿が {note.topic_cluster_size} 件ある")
-    if note.source_type:
-        reasons.append(f"source type が {source_type_label(note.source_type)}")
+        reasons.append(f"関連投稿が {note.topic_cluster_size} 件あり、単発ではない動きに見える")
+    source = source_type_label(note.source_type)
+    if source:
+        reasons.append(f"{source} 発で開発者の反応を追いやすい")
     score_reasons = [
         humanize_score_reason(reason)
         for reason in note.score_reasons
@@ -279,23 +279,38 @@ def deep_dive_reason(note: WikiNote) -> str:
     ]
     score_reasons = [reason for reason in score_reasons if reason]
     if score_reasons:
-        reasons.append(f"score breakdown では {', '.join(score_reasons[:2])}")
+        reasons.append("、".join(score_reasons[:2]))
+    elif note.score:
+        reasons.append("重要度スコアが高い")
     if not reasons:
         reasons.append("今日の先頭トピックで、確認する価値がある")
     return "、".join(reasons) + "であるためです。"
 
 
+def daily_deep_dive_reason(note: WikiNote) -> str:
+    reasons: list[str] = []
+    if note.topic_cluster_size > 1:
+        reasons.append("関連投稿が複数あります")
+    if first_open_question(note):
+        reasons.append("未確認の論点があります")
+    if note.score >= 8:
+        reasons.append("今日の中でも優先度が高いです")
+    if not reasons:
+        reasons.append("開発者目線で次に調べる価値があります")
+    return "理由は、" + "。".join(reasons) + "。詳細は深掘り版で扱います。"
+
+
 def humanize_score_reason(reason: str) -> str:
     if reason.startswith("keyword_matches="):
-        return "AI関連キーワードの一致が多い"
+        return "AI関連キーワードの一致が多いこと"
     if reason.startswith("keyword_score="):
-        return f"keyword score {reason.split('=', 1)[1]}"
+        return "AI関連キーワードの重みが高いこと"
     if reason.startswith("hn_points_bonus="):
-        return f"Hacker News の反応スコア {reason.split('=', 1)[1]}"
+        return "Hacker News で反応があること"
     if reason.startswith("official_source_bonus="):
-        return "公式ソース由来の加点がある"
+        return "公式ソース由来の加点があること"
     if reason.startswith("research_bonus="):
-        return "研究ソース由来の加点がある"
+        return "研究ソース由来の加点があること"
     return reason
 
 
@@ -330,6 +345,14 @@ def first_action(note: WikiNote) -> str:
     if note.action_items:
         return _ensure_sentence(note.action_items[0])
     return "元情報を確認することです。"
+
+
+def concise_interpretation_line(note: WikiNote) -> str:
+    if not note.interpretation.strip():
+        return "意味合いは、元情報を確認して判断します。"
+    interpretation = first_sentence(note.interpretation)
+    interpretation = re.sub(r"^(この事例|このツール|これは|この動き)は、?", "", interpretation)
+    return f"意味合いは、{interpretation}"
 
 
 def first_open_question(note: WikiNote) -> str:
@@ -372,4 +395,7 @@ def _ensure_sentence(text: str) -> str:
 def _join_source_parts(source: str, suffix: str) -> str:
     if not suffix:
         return source
+    source = source.rstrip()
+    if source[-1:] in "。.!?！？":
+        return f"{source}{suffix}"
     return f"{source} {suffix}"

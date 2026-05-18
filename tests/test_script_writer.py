@@ -108,16 +108,19 @@ def test_render_script_supports_briefing_style() -> None:
 
     script = render_script(notes, style="briefing")
 
-    assert "まずは上位 3 件を少し詳しく見て、そのあと 1 件を短く拾います。" in script
+    assert "まずは上位 2 件だけを押さえて、そのあと 2 件を一言で拾います。" in script
     assert "## 一言ニュース" in script
     assert "Show HN:" not in script
     assert "Android AI agent-assistant operating your apps" not in script
     assert "取得元は" not in script
     assert "Hacker News より。" in script
     assert "見るポイントは、デモを確認する。" in script
+    assert "プロンプトキャッシュの不備で高額請求が発生しました。" in script
     assert "ローカル開発環境との接続が見どころです。" not in script
     assert "## 今日の深掘り候補" in script
-    assert "理由は、スコアが 9" in script
+    assert "詳細は深掘り版で扱います。" in script
+    assert "score breakdown" not in script
+    assert "source type" not in script
     assert "今日の実装観点" in script
 
 
@@ -260,7 +263,8 @@ def test_briefing_mentions_when_source_mix_is_biased() -> None:
     script = render_script(notes, style="briefing")
 
     assert "今日は Hacker News 中心の回です。" in script
-    assert "run metadata" in script
+    assert "取得ログ" in script
+    assert "run metadata" not in script
 
 
 def test_briefing_selects_deep_dive_candidate_by_score_and_cluster() -> None:
@@ -301,5 +305,7 @@ def test_briefing_selects_deep_dive_candidate_by_score_and_cluster() -> None:
     script = render_script(notes, style="briefing")
 
     assert "重要な話題ですを深掘り候補にします。" in script
-    assert "関連投稿が 3 件ある" in script
-    assert "score breakdown では keyword score 4.0, Hacker News の反応スコア 2.0であるためです。" in script
+    assert "関連投稿が複数あります" in script
+    assert "詳細は深掘り版で扱います。" in script
+    assert "score breakdown" not in script
+    assert "source type" not in script
