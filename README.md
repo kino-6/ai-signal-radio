@@ -27,22 +27,19 @@ uv sync
 
 ## Best Current Run
 
-いまのおすすめ実行方法は、Bash script にまとめています。実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本、TTS 用テキスト、deep dive 用台本、MkDocs preview まで生成します。
+いまのおすすめ実行方法は、Bash script にまとめています。実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本、TTS 用テキスト、deep dive 用台本、VOICEVOX 音声、MkDocs preview まで生成します。
 
 ```bash
 bash scripts/best-current-run.sh
 ```
 
-VOICEVOX engine を起動している場合は、音声化までまとめて実行できます。
-
-```bash
-VOICEVOX=1 bash scripts/best-current-run.sh
-```
+VOICEVOX engine が起動していない場合は、音声生成だけ警告を出してスキップし、Markdown と TTS 用テキストの生成は続行します。音声生成を明示的に止めたい場合は `VOICEVOX=0` を指定します。
 
 よく使う調整は環境変数で指定できます。
 
 ```bash
 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+VOICEVOX=0 bash scripts/best-current-run.sh
 DEEP_DIVE=0 DOCS=0 bash scripts/best-current-run.sh
 ```
 

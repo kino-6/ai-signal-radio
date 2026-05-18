@@ -16,7 +16,7 @@ Environment variables:
   OLLAMA_URL=http://127.0.0.1:11434
   DEEP_DIVE=1          Generate deep-dive dialogue script and TTS text.
   DOCS=1               Generate MkDocs preview pages.
-  VOICEVOX=0           Set to 1 to synthesize wav files.
+  VOICEVOX=1           Synthesize wav files when VOICEVOX is available.
   SPEAKER=3
   HOST_SPEAKER=3
   ANALYST_SPEAKER=8
@@ -26,7 +26,7 @@ Environment variables:
 
 Examples:
   bash scripts/best-current-run.sh
-  VOICEVOX=1 bash scripts/best-current-run.sh
+  VOICEVOX=0 bash scripts/best-current-run.sh
   LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 USAGE
 }
@@ -45,13 +45,15 @@ OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:latest}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 DEEP_DIVE="${DEEP_DIVE:-1}"
 DOCS="${DOCS:-1}"
-VOICEVOX="${VOICEVOX:-0}"
+VOICEVOX="${VOICEVOX:-1}"
 SPEAKER="${SPEAKER:-3}"
 HOST_SPEAKER="${HOST_SPEAKER:-3}"
 ANALYST_SPEAKER="${ANALYST_SPEAKER:-8}"
 SPEED="${SPEED:-1.18}"
 PITCH="${PITCH:-0.0}"
 INTONATION="${INTONATION:-1.0}"
+DAILY_AUDIO_WRITTEN="0"
+DEEP_AUDIO_WRITTEN="0"
 
 echo "==> Running daily AI news pipeline"
 run_cmd=(
@@ -74,15 +76,20 @@ uv run ai-signal tts-script \
 
 if [[ "$VOICEVOX" == "1" ]]; then
   echo "==> Synthesizing daily audio with VOICEVOX"
-  uv run ai-signal tts \
+  if uv run ai-signal tts \
     --input data/scripts/daily.tts.txt \
     --output data/audio/daily.wav \
     --speaker "$SPEAKER" \
     --speed "$SPEED" \
     --pitch "$PITCH" \
     --intonation "$INTONATION"
+  then
+    DAILY_AUDIO_WRITTEN="1"
+  else
+    echo "warning: VOICEVOX daily audio synthesis failed. Continuing without wav output." >&2
+  fi
 else
-  echo "==> Skipping VOICEVOX audio. Set VOICEVOX=1 to synthesize wav."
+  echo "==> Skipping VOICEVOX audio because VOICEVOX=0."
 fi
 
 if [[ "$DEEP_DIVE" == "1" ]]; then
@@ -102,12 +109,17 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
 
   if [[ "$VOICEVOX" == "1" ]]; then
     echo "==> Synthesizing deep-dive audio with VOICEVOX"
-    uv run ai-signal tts \
+    if uv run ai-signal tts \
       --input data/scripts/deep-dive.tts.txt \
       --output data/audio/deep-dive.wav \
       --speed "$SPEED" \
       --pitch "$PITCH" \
       --intonation "$INTONATION"
+    then
+      DEEP_AUDIO_WRITTEN="1"
+    else
+      echo "warning: VOICEVOX deep-dive audio synthesis failed. Continuing without wav output." >&2
+    fi
   fi
 fi
 
@@ -123,8 +135,11 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
   echo "Deep dive:    data/scripts/deep-dive.md"
   echo "Deep TTS:     data/scripts/deep-dive.tts.txt"
 fi
-if [[ "$VOICEVOX" == "1" ]]; then
+if [[ "$DAILY_AUDIO_WRITTEN" == "1" ]]; then
   echo "Audio:        data/audio/daily.wav"
+fi
+if [[ "$DEEP_AUDIO_WRITTEN" == "1" ]]; then
+  echo "Deep audio:   data/audio/deep-dive.wav"
 fi
 if [[ "$DOCS" == "1" ]]; then
   echo "Preview:      uv run mkdocs serve"
