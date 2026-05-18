@@ -196,6 +196,22 @@ docs/
 
 生成データは `.gitignore` されています。`.gitkeep` 以外の `data/` 配下の成果物はコミットしません。
 
+## Data Pruning
+
+`data/` 配下の run id 付き成果物が増えてきたら、dry-run で削除対象を確認できます。
+
+```bash
+bash scripts/prune-data.sh
+```
+
+実際に削除する場合だけ `--apply` を付けます。
+
+```bash
+bash scripts/prune-data.sh --days 14 --audio-days 7 --apply
+```
+
+この script は `latest.*`、`daily.md`、`deep-dive.md`、`*.tts.txt`、`.gitkeep` は削除対象にしません。通常の入口は残し、古い run archive と wav だけを整理します。
+
 ## VOICEVOX
 
 VOICEVOX 対応は任意です。`demo` や通常の wiki/script 生成には VOICEVOX は不要です。

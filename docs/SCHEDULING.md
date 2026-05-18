@@ -55,3 +55,15 @@ launchctl load ~/Library/LaunchAgents/com.local.ai-signal-radio.plist
 ```
 
 VOICEVOX の音声生成も自動化する場合は、先に VOICEVOX engine が起動している必要があります。
+
+## データ整理
+
+run id 付きの生成物が増えるため、週次で dry-run してから prune する運用を推奨します。
+
+```bash
+cd /path/to/ai-signal-radio
+bash scripts/prune-data.sh
+bash scripts/prune-data.sh --days 14 --audio-days 7 --apply
+```
+
+`latest.*`、`daily.md`、`deep-dive.md`、`*.tts.txt`、`.gitkeep` は削除対象にしません。
