@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
+from ai_signal_radio.config import RankerConfig
 from ai_signal_radio.models import NewsItem
 
 KEYWORDS = (
@@ -20,33 +22,63 @@ KEYWORDS = (
 OFFICIAL_SOURCES = ("openai", "anthropic", "google", "hugging face", "microsoft", "meta")
 
 
-def rank_items(items: list[NewsItem], limit: int = 10) -> list[NewsItem]:
-    scored = [replace(item, score=score_item(item)) for item in items]
+def rank_items(
+    items: list[NewsItem],
+    limit: int = 10,
+    config: RankerConfig | None = None,
+) -> list[NewsItem]:
+    ranker_config = config or RankerConfig()
+    scored = [_with_score_breakdown(item, ranker_config) for item in items]
     ordered = sorted(scored, key=_sort_key, reverse=True)
     return _select_with_source_diversity(ordered, limit)
 
 
-def score_item(item: NewsItem) -> float:
+def score_item(item: NewsItem, config: RankerConfig | None = None) -> float:
     """Transparent MVP heuristic; higher score means more likely to be notable."""
 
+    return float(score_breakdown(item, config=config)["total"])
+
+
+def score_breakdown(item: NewsItem, config: RankerConfig | None = None) -> dict[str, Any]:
+    ranker_config = config or RankerConfig()
     text = f"{item.title} {item.summary} {item.content} {' '.join(item.tags)}".lower()
-    score = 0.0
 
     matched_keywords = [keyword for keyword in KEYWORDS if keyword in text]
-    score += 2.0 * len(matched_keywords)
+    keyword_score = ranker_config.keyword_bonus * len(matched_keywords)
 
     source_text = f"{item.source} {item.url}".lower()
-    if any(source in source_text for source in OFFICIAL_SOURCES):
-        score += 4.0
+    official_source_bonus = (
+        ranker_config.official_source_bonus
+        if any(source in source_text for source in OFFICIAL_SOURCES)
+        else 0.0
+    )
 
-    if item.source_type == "arxiv":
-        score += 2.0
+    research_bonus = ranker_config.research_bonus if item.source_type == "arxiv" else 0.0
 
+    hn_points_bonus = 0.0
     points = item.metadata.get("points")
     if isinstance(points, int | float):
-        score += min(float(points) / 100.0, 3.0)
+        hn_points_bonus = min(
+            float(points) / ranker_config.hn_points_divisor,
+            ranker_config.hn_points_cap,
+        )
 
-    return round(score, 2)
+    total = round(keyword_score + official_source_bonus + research_bonus + hn_points_bonus, 2)
+    return {
+        "keyword_matches": matched_keywords,
+        "keyword_score": round(keyword_score, 2),
+        "official_source_bonus": round(official_source_bonus, 2),
+        "research_bonus": round(research_bonus, 2),
+        "hn_points_bonus": round(hn_points_bonus, 2),
+        "total": total,
+    }
+
+
+def _with_score_breakdown(item: NewsItem, config: RankerConfig) -> NewsItem:
+    breakdown = score_breakdown(item, config=config)
+    metadata = dict(item.metadata)
+    metadata["score_breakdown"] = breakdown
+    return replace(item, score=float(breakdown["total"]), metadata=metadata)
 
 
 def _select_with_source_diversity(items: list[NewsItem], limit: int) -> list[NewsItem]:

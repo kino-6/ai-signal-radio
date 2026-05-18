@@ -17,8 +17,9 @@ class HackerNewsCollector(BaseCollector):
         source_name: str,
         query: str = "AI OR LLM OR OpenAI OR Anthropic",
         timeout_seconds: int = 15,
+        rate_limit_seconds: float = 0.0,
     ) -> None:
-        super().__init__(source_name)
+        super().__init__(source_name, rate_limit_seconds=rate_limit_seconds)
         self.query = query
         self.timeout_seconds = timeout_seconds
 

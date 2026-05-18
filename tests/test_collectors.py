@@ -70,8 +70,10 @@ def test_parse_hackernews_payload_without_network() -> None:
 
 
 def test_arxiv_collector_builds_expected_query_url() -> None:
-    collector = ArxivCollector("arxiv-ai", max_results=5)
+    collector = ArxivCollector("arxiv-ai", max_results=5, timeout_seconds=7, rate_limit_seconds=0.5)
 
     assert "cat%3Acs.AI" in collector.url
     assert "max_results=5" in collector.url
     assert collector.source_type == "arxiv"
+    assert collector.timeout_seconds == 7
+    assert collector.rate_limit_seconds == 0.5

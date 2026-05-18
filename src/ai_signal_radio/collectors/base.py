@@ -13,8 +13,9 @@ class CollectionError(RuntimeError):
 
 
 class BaseCollector(ABC):
-    def __init__(self, source_name: str) -> None:
+    def __init__(self, source_name: str, rate_limit_seconds: float = 0.0) -> None:
         self.source_name = source_name
+        self.rate_limit_seconds = max(0.0, rate_limit_seconds)
 
     @abstractmethod
     def collect(self, limit: int = 20) -> list[NewsItem]:

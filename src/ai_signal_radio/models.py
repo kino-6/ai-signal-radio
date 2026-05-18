@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
+import re
 from typing import Any
 
 
@@ -35,6 +36,8 @@ class NewsItem:
     tags: tuple[str, ...] = field(default_factory=tuple)
     score: float = 0.0
     id: str = ""
+    canonical_key: str = ""
+    content_hash: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -48,6 +51,12 @@ class NewsItem:
         published_at = ensure_aware_utc(self.published_at)
         collected_at = ensure_aware_utc(self.collected_at)
         item_id = self.id.strip() or _stable_id(source=source, url=url, title=title)
+        canonical_key = self.canonical_key.strip() or _canonical_key(url=url, title=title)
+        content_hash = self.content_hash.strip() or _content_hash(
+            title=title,
+            summary=summary,
+            content=content,
+        )
 
         if not source:
             raise ValueError("source is required")
@@ -67,6 +76,8 @@ class NewsItem:
         object.__setattr__(self, "tags", tags)
         object.__setattr__(self, "score", float(self.score))
         object.__setattr__(self, "id", item_id)
+        object.__setattr__(self, "canonical_key", canonical_key)
+        object.__setattr__(self, "content_hash", content_hash)
 
     @property
     def stable_id(self) -> str:
@@ -85,6 +96,8 @@ class NewsItem:
             "content": self.content,
             "tags": list(self.tags),
             "score": self.score,
+            "canonical_key": self.canonical_key,
+            "content_hash": self.content_hash,
             "metadata": self.metadata,
         }
 
@@ -106,6 +119,8 @@ class NewsItem:
             tags=tuple(str(tag) for tag in data.get("tags", ())),
             score=float(data.get("score", 0.0)),
             id=str(data.get("id", "")),
+            canonical_key=str(data.get("canonical_key", "")),
+            content_hash=str(data.get("content_hash", "")),
             metadata=dict(data.get("metadata", {})),
         )
 
@@ -124,6 +139,10 @@ class WikiNote:
     fact_summary: str
     interpretation: str
     action_items: tuple[str, ...]
+    score_reasons: tuple[str, ...] = field(default_factory=tuple)
+    source_coverage: str = ""
+    dedupe_notes: str = ""
+    open_questions: tuple[str, ...] = field(default_factory=tuple)
     score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -138,6 +157,10 @@ class WikiNote:
             "fact_summary": self.fact_summary,
             "interpretation": self.interpretation,
             "action_items": list(self.action_items),
+            "score_reasons": list(self.score_reasons),
+            "source_coverage": self.source_coverage,
+            "dedupe_notes": self.dedupe_notes,
+            "open_questions": list(self.open_questions),
             "score": self.score,
         }
 
@@ -154,6 +177,10 @@ class WikiNote:
             fact_summary=str(data.get("fact_summary", "")),
             interpretation=str(data.get("interpretation", "")),
             action_items=tuple(str(item) for item in data.get("action_items", ())),
+            score_reasons=tuple(str(item) for item in data.get("score_reasons", ())),
+            source_coverage=str(data.get("source_coverage", "")),
+            dedupe_notes=str(data.get("dedupe_notes", "")),
+            open_questions=tuple(str(item) for item in data.get("open_questions", ())),
             score=float(data.get("score", 0.0)),
         )
 
@@ -166,11 +193,25 @@ class PipelineResult:
     raw_path: str
     wiki_path: str
     script_path: str
+    processed_path: str | None = None
+    dedupe_report_path: str | None = None
     audio_path: str | None = None
 
 
 def _stable_id(source: str, url: str, title: str) -> str:
     payload = f"{source}\0{url}\0{title}".encode("utf-8")
+    return sha256(payload).hexdigest()[:16]
+
+
+def _canonical_key(url: str, title: str) -> str:
+    normalized_title = re.sub(r"\W+", " ", title.lower())
+    normalized_title = " ".join(normalized_title.split())
+    payload = f"{url.strip().lower()}\0{normalized_title}".encode("utf-8")
+    return sha256(payload).hexdigest()[:16]
+
+
+def _content_hash(title: str, summary: str, content: str) -> str:
+    payload = f"{title}\0{summary}\0{content}".encode("utf-8")
     return sha256(payload).hexdigest()[:16]
 
 

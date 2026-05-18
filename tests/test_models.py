@@ -21,6 +21,8 @@ def test_news_item_normalizes_and_serializes() -> None:
     assert item.summary == "summary"
     assert item.tags == ("ai", "tools")
     assert item.id
+    assert item.canonical_key
+    assert item.content_hash
     assert item.collected_at.tzinfo is not None
 
     restored = NewsItem.from_dict(item.to_dict())

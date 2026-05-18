@@ -18,9 +18,10 @@ class RssCollector(BaseCollector):
         source_name: str,
         url: str,
         timeout_seconds: int = 15,
+        rate_limit_seconds: float = 0.0,
         source_type: str = "rss",
     ) -> None:
-        super().__init__(source_name)
+        super().__init__(source_name, rate_limit_seconds=rate_limit_seconds)
         self.url = url
         self.timeout_seconds = timeout_seconds
         self.source_type = source_type

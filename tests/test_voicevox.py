@@ -1,4 +1,9 @@
-from ai_signal_radio.tts.voicevox import apply_pronunciations, markdown_to_speech_text, split_for_tts
+from ai_signal_radio.tts.voicevox import (
+    apply_pronunciations,
+    load_pronunciation_profile,
+    markdown_to_speech_text,
+    split_for_tts_text,
+)
 
 
 def test_markdown_to_speech_text_strips_markdown_for_tts() -> None:
@@ -24,10 +29,16 @@ LLM and AI update.
 def test_split_for_tts_chunks_long_text() -> None:
     text = "これはテストです。" * 80
 
-    chunks = split_for_tts(text, max_chars=80)
+    chunks = split_for_tts_text(text, max_chars=80)
 
     assert len(chunks) > 1
     assert all(len(chunk) <= 100 for chunk in chunks)
+
+
+def test_split_for_tts_text_expects_plain_speech_text() -> None:
+    chunks = split_for_tts_text("# 見出しです。", max_chars=80)
+
+    assert chunks == ["# 見出しです。"]
 
 
 def test_apply_pronunciations_accepts_context_specific_pairs() -> None:
@@ -42,3 +53,23 @@ def test_apply_pronunciations_accepts_context_specific_pairs() -> None:
     assert "ハッカーニュース" in text
     assert "ボイスボックス" in text
     assert "AWS Bedrock" in text
+
+
+def test_load_pronunciation_profile_reads_optional_yaml(tmp_path) -> None:
+    profile = tmp_path / "pronunciations.yml"
+    profile.write_text(
+        """
+pronunciations:
+  - term: "VOICEVOX"
+    reading: "ボイスボックス"
+  - ["Hacker News", "ハッカーニュース"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    pronunciations = load_pronunciation_profile(profile)
+
+    assert pronunciations == (
+        ("VOICEVOX", "ボイスボックス"),
+        ("Hacker News", "ハッカーニュース"),
+    )

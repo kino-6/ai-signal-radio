@@ -10,8 +10,11 @@ import json
 import re
 import wave
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+import yaml
 
 
 class VoicevoxClient:
@@ -64,7 +67,7 @@ class VoicevoxClient:
         pitch_scale: float = 0.0,
         intonation_scale: float = 1.0,
     ) -> Path:
-        chunks = split_for_tts(text)
+        chunks = split_for_tts_text(text)
         audio_chunks = [
             self.synthesis(
                 self.audio_query(
@@ -87,6 +90,29 @@ class VoicevoxClient:
 
 
 PronunciationPairs = tuple[tuple[str, str], ...]
+
+
+def load_pronunciation_profile(path: Path | None) -> PronunciationPairs:
+    """Load context-specific pronunciation replacements from YAML.
+
+    The profile is intentionally explicit and optional. Different domains can
+    read the same term differently, so this module does not keep a global
+    dictionary.
+    """
+
+    if path is None:
+        return ()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entries = raw.get("pronunciations", raw)
+    if not isinstance(entries, list):
+        raise ValueError("pronunciation profile must be a list or contain a pronunciations list")
+
+    pairs: list[tuple[str, str]] = []
+    for entry in entries:
+        pair = _pronunciation_pair(entry)
+        if pair:
+            pairs.append(pair)
+    return tuple(pairs)
 
 
 def markdown_to_speech_text(markdown: str, pronunciations: PronunciationPairs = ()) -> str:
@@ -113,9 +139,22 @@ def apply_pronunciations(text: str, pronunciations: PronunciationPairs = ()) -> 
     return converted
 
 
-def split_for_tts(text: str, max_chars: int = 240) -> list[str]:
-    normalized = markdown_to_speech_text(text)
-    units = [unit.strip() for unit in re.split(r"(?<=[。！？\n])", normalized) if unit.strip()]
+def _pronunciation_pair(entry: Any) -> tuple[str, str] | None:
+    if isinstance(entry, dict):
+        term = str(entry.get("term", "")).strip()
+        reading = str(entry.get("reading", "")).strip()
+    elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+        term = str(entry[0]).strip()
+        reading = str(entry[1]).strip()
+    else:
+        return None
+    if not term or not reading:
+        return None
+    return term, reading
+
+
+def split_for_tts_text(text: str, max_chars: int = 240) -> list[str]:
+    units = [unit.strip() for unit in re.split(r"(?<=[。！？\n])", text) if unit.strip()]
     chunks: list[str] = []
     current = ""
     for unit in units:
@@ -127,6 +166,12 @@ def split_for_tts(text: str, max_chars: int = 240) -> list[str]:
     if current:
         chunks.append(current)
     return chunks or ["読み上げるテキストがありません。"]
+
+
+def split_for_tts(text: str, max_chars: int = 240) -> list[str]:
+    """Backward-compatible wrapper for callers that still pass Markdown."""
+
+    return split_for_tts_text(markdown_to_speech_text(text), max_chars=max_chars)
 
 
 def _write_joined_wav(audio_chunks: list[bytes], output_path: Path) -> None:

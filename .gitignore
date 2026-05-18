@@ -5,10 +5,12 @@ __pycache__/
 config/sources.yml
 
 data/raw/*
+data/processed/*
 data/wiki/*
 data/scripts/*
 data/audio/*
 !data/raw/.gitkeep
+!data/processed/.gitkeep
 !data/wiki/.gitkeep
 !data/scripts/.gitkeep
 !data/audio/.gitkeep

@@ -16,6 +16,8 @@ def test_ollama_summarizer_uses_injected_transport() -> None:
                         "fact_summary": "ローカルLLMで要約しました。",
                         "interpretation": "開発者が追うべき変化です。",
                         "action_items": ["元記事を確認する", "次回の実装候補に入れる"],
+                        "source_coverage": "単一ソースの情報です。",
+                        "open_questions": ["公式発表はあるか"],
                     }
                 )
             }
@@ -39,6 +41,8 @@ def test_ollama_summarizer_uses_injected_transport() -> None:
     assert note.source == "demo"
     assert note.interpretation == "開発者が追うべき変化です。"
     assert note.action_items == ("元記事を確認する", "次回の実装候補に入れる")
+    assert note.source_coverage == "単一ソースの情報です。"
+    assert note.open_questions == ("公式発表はあるか",)
 
 
 def test_ollama_summarizer_falls_back_on_bad_response() -> None:
@@ -59,3 +63,41 @@ def test_ollama_summarizer_falls_back_on_bad_response() -> None:
     note = summarizer(item)
 
     assert note.fact_summary == "A sample update."
+
+
+def test_ollama_summarizer_validates_empty_and_malformed_fields() -> None:
+    def fake_transport(request, timeout_seconds: int) -> bytes:
+        return json.dumps(
+            {
+                "response": json.dumps(
+                    {
+                        "fact_summary": "",
+                        "interpretation": "x" * 500,
+                        "action_items": "not-a-list",
+                        "open_questions": [123, ""],
+                    }
+                )
+            }
+        ).encode("utf-8")
+
+    summarizer = OllamaSummarizer(transport=fake_transport)
+    item = NewsItem(
+        source="demo",
+        source_type="demo",
+        title="AI agent update",
+        url="https://example.com/agent",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        summary="Fallback fact.",
+    )
+
+    note = summarizer(item)
+
+    assert note.fact_summary == "Fallback fact."
+    assert len(note.interpretation) <= 320
+    assert note.interpretation.endswith("…")
+    assert note.action_items == (
+        "Read the source and confirm the concrete change.",
+        "Decide whether this should update the project watch list.",
+    )
+    assert note.open_questions == ("不明",)

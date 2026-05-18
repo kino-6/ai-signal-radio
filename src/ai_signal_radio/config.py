@@ -22,13 +22,27 @@ class SourceConfig:
 class TTSConfig:
     enabled: bool = False
     endpoint: str = "http://127.0.0.1:50021"
-    speaker: int = 1
+    speaker: int = 3
+    speed_scale: float = 1.18
+    pitch_scale: float = 0.0
+    intonation_scale: float = 1.0
+    pronunciation_profile: str | None = None
+
+
+@dataclass(frozen=True)
+class RankerConfig:
+    keyword_bonus: float = 2.0
+    official_source_bonus: float = 4.0
+    research_bonus: float = 2.0
+    hn_points_divisor: float = 100.0
+    hn_points_cap: float = 3.0
 
 
 @dataclass(frozen=True)
 class AppConfig:
     sources: tuple[SourceConfig, ...] = field(default_factory=tuple)
     tts: TTSConfig = field(default_factory=TTSConfig)
+    ranker: RankerConfig = field(default_factory=RankerConfig)
 
 
 def load_config(path: Path) -> AppConfig:
@@ -40,7 +54,8 @@ def load_config(path: Path) -> AppConfig:
 
     sources = tuple(_load_source(item) for item in raw.get("sources", []))
     tts = _load_tts(raw.get("tts", {}))
-    return AppConfig(sources=sources, tts=tts)
+    ranker = _load_ranker(raw.get("ranker", {}))
+    return AppConfig(sources=sources, tts=tts, ranker=ranker)
 
 
 def _load_source(raw: dict[str, Any]) -> SourceConfig:
@@ -60,5 +75,21 @@ def _load_tts(raw: dict[str, Any]) -> TTSConfig:
     return TTSConfig(
         enabled=bool(raw.get("enabled", False)),
         endpoint=str(raw.get("endpoint", "http://127.0.0.1:50021")).rstrip("/"),
-        speaker=int(raw.get("speaker", 1)),
+        speaker=int(raw.get("speaker", 3)),
+        speed_scale=float(raw.get("speed_scale", raw.get("speed", 1.18))),
+        pitch_scale=float(raw.get("pitch_scale", raw.get("pitch", 0.0))),
+        intonation_scale=float(raw.get("intonation_scale", raw.get("intonation", 1.0))),
+        pronunciation_profile=(
+            str(raw["pronunciation_profile"]) if raw.get("pronunciation_profile") else None
+        ),
+    )
+
+
+def _load_ranker(raw: dict[str, Any]) -> RankerConfig:
+    return RankerConfig(
+        keyword_bonus=float(raw.get("keyword_bonus", 2.0)),
+        official_source_bonus=float(raw.get("official_source_bonus", 4.0)),
+        research_bonus=float(raw.get("research_bonus", 2.0)),
+        hn_points_divisor=float(raw.get("hn_points_divisor", 100.0)),
+        hn_points_cap=float(raw.get("hn_points_cap", 3.0)),
     )

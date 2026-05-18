@@ -13,6 +13,8 @@ class ArxivCollector(RssCollector):
         source_name: str,
         search_query: str = "cat:cs.AI OR cat:cs.CL OR cat:cs.LG",
         max_results: int = 20,
+        timeout_seconds: int = 15,
+        rate_limit_seconds: float = 0.0,
     ) -> None:
         query = urlencode(
             {
@@ -25,5 +27,7 @@ class ArxivCollector(RssCollector):
         super().__init__(
             source_name=source_name,
             url=f"https://export.arxiv.org/api/query?{query}",
+            timeout_seconds=timeout_seconds,
+            rate_limit_seconds=rate_limit_seconds,
             source_type="arxiv",
         )

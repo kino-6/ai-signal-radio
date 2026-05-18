@@ -3,21 +3,42 @@
 from __future__ import annotations
 
 import argparse
+import shutil
+import sys
+import time
+from dataclasses import replace
 from pathlib import Path
 
 from ai_signal_radio.collectors.arxiv import ArxivCollector
 from ai_signal_radio.collectors.base import BaseCollector, CollectionError, DemoCollector
 from ai_signal_radio.collectors.hackernews import HackerNewsCollector
 from ai_signal_radio.collectors.rss import RssCollector
-from ai_signal_radio.config import AppConfig, SourceConfig, load_config
+from ai_signal_radio.config import AppConfig, RankerConfig, SourceConfig, load_config
 from ai_signal_radio.models import NewsItem, PipelineResult
-from ai_signal_radio.processors.dedupe import dedupe_items
+from ai_signal_radio.processors.dedupe import DedupeResult, dedupe_items, dedupe_items_with_report
 from ai_signal_radio.processors.ranker import rank_items
 from ai_signal_radio.processors.script_writer import write_script
-from ai_signal_radio.processors.wiki_writer import Summarizer, load_wiki_notes, write_wiki_notes
-from ai_signal_radio.storage import ensure_data_dirs, load_raw_items, save_raw_items
+from ai_signal_radio.processors.wiki_writer import (
+    Summarizer,
+    load_wiki_notes,
+    write_topic_pages,
+    write_wiki_notes,
+)
+from ai_signal_radio.storage import (
+    date_slug,
+    ensure_data_dirs,
+    load_raw_items,
+    save_dedupe_report,
+    save_processed_items,
+    save_raw_items,
+    timestamp_slug,
+)
 from ai_signal_radio.summarizers.ollama import OllamaSummarizer
-from ai_signal_radio.tts.voicevox import VoicevoxClient, markdown_to_speech_text
+from ai_signal_radio.tts.voicevox import (
+    VoicevoxClient,
+    load_pronunciation_profile,
+    markdown_to_speech_text,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,19 +69,25 @@ def main(argv: list[str] | None = None) -> int:
             print(path)
         return 0
     if args.command == "script":
-        path = script_command(input_path=args.input, output_path=args.output)
+        path = script_command(input_path=args.input, output_path=args.output, style=args.style)
         print(f"Wrote script: {path}")
         return 0
     if args.command == "tts":
-        path = tts_command(
-            input_path=args.input,
-            output_path=args.output,
-            speaker=args.speaker,
-            speed_scale=args.speed,
-            pitch_scale=args.pitch,
-            intonation_scale=args.intonation,
-            voicevox_url=args.voicevox_url,
-        )
+        try:
+            path = tts_command(
+                input_path=args.input,
+                output_path=args.output,
+                config_path=args.config,
+                speaker=args.speaker,
+                speed_scale=args.speed,
+                pitch_scale=args.pitch,
+                intonation_scale=args.intonation,
+                voicevox_url=args.voicevox_url,
+                pronunciation_profile=args.pronunciation_profile,
+            )
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         print(f"Wrote audio: {path}")
         return 0
     if args.command == "run":
@@ -73,6 +100,19 @@ def main(argv: list[str] | None = None) -> int:
             summarizer_name=args.summarizer,
             ollama_model=args.ollama_model,
             ollama_url=args.ollama_url,
+            script_style=args.script_style,
+        )
+        _print_result(result)
+        return 0
+    if args.command == "rebuild":
+        result = rebuild_command(
+            input_path=args.input,
+            data_dir=args.data_dir,
+            limit=args.limit,
+            summarizer_name=args.summarizer,
+            ollama_model=args.ollama_model,
+            ollama_url=args.ollama_url,
+            script_style=args.script_style,
         )
         _print_result(result)
         return 0
@@ -116,15 +156,28 @@ def build_parser() -> argparse.ArgumentParser:
     script = subparsers.add_parser("script", help="Generate a radio-style Markdown script.")
     script.add_argument("--input", type=Path, required=True)
     script.add_argument("--output", type=Path, required=True)
+    script.add_argument(
+        "--style",
+        choices=("short", "standard", "detailed"),
+        default="standard",
+        help="Control script length and detail.",
+    )
 
     tts = subparsers.add_parser("tts", help="Synthesize a Markdown script with local VOICEVOX.")
+    tts.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
     tts.add_argument("--input", type=Path, required=True)
     tts.add_argument("--output", type=Path, default=Path("data/audio/daily.wav"))
-    tts.add_argument("--speaker", type=int, default=3, help="VOICEVOX speaker ID. 3 is Zundamon.")
-    tts.add_argument("--speed", type=float, default=1.18, help="VOICEVOX speedScale.")
-    tts.add_argument("--pitch", type=float, default=0.0, help="VOICEVOX pitchScale.")
-    tts.add_argument("--intonation", type=float, default=1.0, help="VOICEVOX intonationScale.")
-    tts.add_argument("--voicevox-url", default="http://127.0.0.1:50021")
+    tts.add_argument("--speaker", type=int, default=None, help="VOICEVOX speaker ID. 3 is Zundamon.")
+    tts.add_argument("--speed", type=float, default=None, help="VOICEVOX speedScale.")
+    tts.add_argument("--pitch", type=float, default=None, help="VOICEVOX pitchScale.")
+    tts.add_argument("--intonation", type=float, default=None, help="VOICEVOX intonationScale.")
+    tts.add_argument("--voicevox-url", default=None)
+    tts.add_argument(
+        "--pronunciation-profile",
+        type=Path,
+        default=None,
+        help="Optional YAML profile for context-specific pronunciation replacements.",
+    )
 
     demo = subparsers.add_parser("demo", help="Run a fully local sample pipeline.")
     demo.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -146,6 +199,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Collect and rank items, then print a preview without writing files.",
     )
     add_summarizer_args(run)
+    run.add_argument(
+        "--script-style",
+        choices=("short", "standard", "detailed"),
+        default="standard",
+        help="Control generated radio script length and detail.",
+    )
+
+    rebuild = subparsers.add_parser(
+        "rebuild",
+        help="Reprocess an existing raw JSON file into wiki notes and a radio script.",
+    )
+    rebuild.add_argument("--input", type=Path, default=Path("data/raw/latest.json"))
+    rebuild.add_argument("--data-dir", type=Path, default=Path("data"))
+    rebuild.add_argument("--limit", type=int, default=20)
+    add_summarizer_args(rebuild)
+    rebuild.add_argument(
+        "--script-style",
+        choices=("short", "standard", "detailed"),
+        default="standard",
+        help="Control generated radio script length and detail.",
+    )
     return parser
 
 
@@ -177,12 +251,14 @@ def collect_command(
 ) -> Path | None:
     config = load_config(config_path) if config_path.exists() else AppConfig()
     items = collect_all(build_collectors(config.sources, source_filter=source_filter), limit=limit)
-    ranked = rank_items(dedupe_items(items), limit=limit)
     if dry_run:
+        dedupe_result = dedupe_items_with_report(items)
+        ranked = rank_items(dedupe_result.selected_items, limit=limit, config=config.ranker)
         _print_preview(items, ranked)
         return None
     ensure_data_dirs(data_dir)
-    return save_raw_items(items, data_dir)
+    run_id = timestamp_slug()
+    return save_raw_items(items, data_dir, run_id=run_id)
 
 
 def wiki_command(
@@ -193,31 +269,71 @@ def wiki_command(
     ollama_url: str = "http://127.0.0.1:11434",
 ) -> list[Path]:
     items = load_raw_items(input_path)
-    ranked = rank_items(dedupe_items(items), limit=len(items) or 20)
+    ranked = (
+        items
+        if _looks_processed(items)
+        else rank_items(dedupe_items(items), limit=len(items) or 20)
+    )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
-    return write_wiki_notes(ranked, output_dir, summarizer=summarizer, clean_day=True)
+    paths = write_wiki_notes(
+        ranked,
+        output_dir,
+        summarizer=summarizer,
+        clean_day=True,
+        run_id=timestamp_slug(),
+    )
+    write_topic_pages([load_wiki_notes(path)[0] for path in paths], output_dir / "topics")
+    return paths
 
 
-def script_command(input_path: Path, output_path: Path) -> Path:
+def script_command(input_path: Path, output_path: Path, style: str = "standard") -> Path:
     notes = load_wiki_notes(input_path)
     notes = sorted(notes, key=lambda note: note.score, reverse=True)
-    return write_script(notes, output_path)
+    return write_script(notes, output_path, style=style)
 
 
 def tts_command(
     input_path: Path,
     output_path: Path,
-    speaker: int = 3,
-    speed_scale: float = 1.18,
-    pitch_scale: float = 0.0,
-    intonation_scale: float = 1.0,
-    voicevox_url: str = "http://127.0.0.1:50021",
+    config_path: Path = Path("config/sources.example.yml"),
+    speaker: int | None = None,
+    speed_scale: float | None = None,
+    pitch_scale: float | None = None,
+    intonation_scale: float | None = None,
+    voicevox_url: str | None = None,
+    pronunciation_profile: Path | None = None,
 ) -> Path:
+    config = load_config(config_path) if config_path.exists() else AppConfig()
+    tts_config = config.tts
+    voicevox_url = voicevox_url or tts_config.endpoint
+    speaker = speaker if speaker is not None else tts_config.speaker
+    speed_scale = speed_scale if speed_scale is not None else tts_config.speed_scale
+    pitch_scale = pitch_scale if pitch_scale is not None else tts_config.pitch_scale
+    intonation_scale = (
+        intonation_scale if intonation_scale is not None else tts_config.intonation_scale
+    )
+    profile_path = pronunciation_profile
+    if profile_path is None and tts_config.pronunciation_profile:
+        profile_path = Path(tts_config.pronunciation_profile)
+        if not profile_path.is_absolute() and not profile_path.exists():
+            profile_path = config_path.parent / profile_path
+
     client = VoicevoxClient(base_url=voicevox_url)
     if not client.healthcheck():
-        raise RuntimeError(f"VOICEVOX engine is not available at {voicevox_url}")
+        raise RuntimeError(
+            "VOICEVOX engine に接続できません。"
+            f"起動しているか確認してください: {voicevox_url} "
+            "VOICEVOX アプリを起動してから `uv run ai-signal tts ...` を再実行します。"
+        )
     markdown = input_path.read_text(encoding="utf-8")
-    speech_text = markdown_to_speech_text(markdown)
+    try:
+        pronunciations = load_pronunciation_profile(profile_path)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"pronunciation profile を読み込めません: {profile_path}: {exc}") from exc
+    speech_text = markdown_to_speech_text(
+        markdown,
+        pronunciations=pronunciations,
+    )
     return client.synthesize_to_wav(
         speech_text,
         output_path,
@@ -237,69 +353,165 @@ def run_command(
     summarizer_name: str = "placeholder",
     ollama_model: str = "gemma4:latest",
     ollama_url: str = "http://127.0.0.1:11434",
+    script_style: str = "standard",
 ) -> PipelineResult:
     config = load_config(config_path) if config_path.exists() else AppConfig()
     collected = collect_all(build_collectors(config.sources, source_filter=source_filter), limit=limit)
-    deduped = dedupe_items(collected)
-    ranked = rank_items(deduped, limit=limit)
+    dedupe_result, ranked, processed = _process_items(
+        collected,
+        limit=limit,
+        ranker_config=config.ranker,
+    )
 
     if dry_run:
         _print_preview(collected, ranked)
         return PipelineResult(
             collected_count=len(collected),
-            deduped_count=len(deduped),
+            deduped_count=len(dedupe_result.selected_items),
             selected_count=len(ranked),
             raw_path="dry-run: not written",
+            processed_path="dry-run: not written",
             wiki_path="dry-run: not written",
             script_path="dry-run: not written",
         )
 
     ensure_data_dirs(data_dir)
-    raw_path = save_raw_items(collected, data_dir)
+    run_id = timestamp_slug()
+    raw_path = save_raw_items(collected, data_dir, run_id=run_id)
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
-    wiki_path, script_path = _write_pipeline_outputs(ranked, data_dir, summarizer=summarizer)
+    wiki_path, script_path = _write_pipeline_outputs(
+        processed,
+        data_dir,
+        run_id=run_id,
+        summarizer=summarizer,
+        script_style=script_style,
+    )
     return PipelineResult(
         collected_count=len(collected),
-        deduped_count=len(deduped),
+        deduped_count=len(dedupe_result.selected_items),
         selected_count=len(ranked),
         raw_path=str(raw_path),
         wiki_path=str(wiki_path),
         script_path=str(script_path),
+        processed_path=str(processed_path),
+        dedupe_report_path=str(dedupe_report_path),
+    )
+
+
+def rebuild_command(
+    input_path: Path,
+    data_dir: Path = Path("data"),
+    limit: int = 20,
+    summarizer_name: str = "placeholder",
+    ollama_model: str = "gemma4:latest",
+    ollama_url: str = "http://127.0.0.1:11434",
+    script_style: str = "standard",
+) -> PipelineResult:
+    items = load_raw_items(input_path)
+    dedupe_result, ranked, processed = _process_items(items, limit=limit)
+    ensure_data_dirs(data_dir)
+    run_id = timestamp_slug()
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
+    wiki_path, script_path = _write_pipeline_outputs(
+        processed,
+        data_dir,
+        run_id=run_id,
+        summarizer=summarizer,
+        script_style=script_style,
+    )
+    return PipelineResult(
+        collected_count=len(items),
+        deduped_count=len(dedupe_result.selected_items),
+        selected_count=len(ranked),
+        raw_path=str(input_path),
+        wiki_path=str(wiki_path),
+        script_path=str(script_path),
+        processed_path=str(processed_path),
+        dedupe_report_path=str(dedupe_report_path),
     )
 
 
 def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResult:
     ensure_data_dirs(data_dir)
     collected = DemoCollector("demo").collect(limit=limit)
-    deduped = dedupe_items(collected)
-    ranked = rank_items(deduped, limit=limit)
-    raw_path = save_raw_items(collected, data_dir)
-    wiki_path, script_path = _write_pipeline_outputs(ranked, data_dir)
+    dedupe_result, ranked, processed = _process_items(collected, limit=limit)
+    run_id = timestamp_slug()
+    raw_path = save_raw_items(collected, data_dir, run_id=run_id)
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    wiki_path, script_path = _write_pipeline_outputs(processed, data_dir, run_id=run_id)
     return PipelineResult(
         collected_count=len(collected),
-        deduped_count=len(deduped),
+        deduped_count=len(dedupe_result.selected_items),
         selected_count=len(ranked),
         raw_path=str(raw_path),
         wiki_path=str(wiki_path),
         script_path=str(script_path),
+        processed_path=str(processed_path),
+        dedupe_report_path=str(dedupe_report_path),
     )
 
 
 def _write_pipeline_outputs(
     items: list[NewsItem],
     data_dir: Path,
+    run_id: str,
     summarizer: Summarizer | None = None,
+    script_style: str = "standard",
 ) -> tuple[Path, Path]:
     wiki_paths = write_wiki_notes(
         items,
         data_dir / "wiki",
         summarizer=summarizer,
         clean_day=True,
+        run_id=run_id,
     )
     notes = [load_wiki_notes(path)[0] for path in wiki_paths]
-    script_path = write_script(notes, data_dir / "scripts" / "daily.md")
+    script_path = write_script(
+        notes,
+        data_dir / "scripts" / f"{date_slug()}-{run_id}-daily.md",
+        style=script_style,
+    )
+    write_topic_pages(notes, data_dir / "wiki" / "topics")
+    shutil.copyfile(script_path, data_dir / "scripts" / "daily.md")
     wiki_path = wiki_paths[0].parent if wiki_paths else data_dir / "wiki"
     return wiki_path, script_path
+
+
+def _process_items(
+    items: list[NewsItem],
+    limit: int,
+    ranker_config: RankerConfig | None = None,
+) -> tuple[DedupeResult, list[NewsItem], list[NewsItem]]:
+    dedupe_result = dedupe_items_with_report(items)
+    ranked = rank_items(dedupe_result.selected_items, limit=limit, config=ranker_config)
+    processed = _with_dedupe_notes(ranked, dedupe_result)
+    return dedupe_result, ranked, processed
+
+
+def _looks_processed(items: list[NewsItem]) -> bool:
+    return bool(items) and all("score_breakdown" in item.metadata for item in items)
+
+
+def _with_dedupe_notes(items: list[NewsItem], result: DedupeResult) -> list[NewsItem]:
+    groups_by_selected: dict[str, list[dict[str, object]]] = {}
+    for group in result.duplicate_groups:
+        groups_by_selected.setdefault(group.selected_id, []).append(group.to_dict())
+
+    processed: list[NewsItem] = []
+    for item in items:
+        metadata = dict(item.metadata)
+        groups = groups_by_selected.get(item.id, [])
+        metadata["dedupe"] = {
+            "duplicate_count": sum(len(group["duplicate_ids"]) for group in groups),
+            "duplicate_groups": groups,
+        }
+        processed.append(replace(item, metadata=metadata))
+    return processed
 
 
 def build_collectors(
@@ -326,7 +538,14 @@ def build_collectors(
         elif source.type == "rss":
             if not source.url:
                 raise ValueError(f"RSS source {source.name} requires url")
-            collectors.append(RssCollector(source.name, source.url))
+            collectors.append(
+                RssCollector(
+                    source.name,
+                    source.url,
+                    timeout_seconds=_timeout_seconds(source),
+                    rate_limit_seconds=_rate_limit_seconds(source),
+                )
+            )
         elif source.type == "arxiv":
             collectors.append(
                 ArxivCollector(
@@ -335,6 +554,8 @@ def build_collectors(
                         source.params.get("search_query", "cat:cs.AI OR cat:cs.LG OR cat:cs.CL")
                     ),
                     max_results=int(source.params.get("max_results", 20)),
+                    timeout_seconds=_timeout_seconds(source),
+                    rate_limit_seconds=_rate_limit_seconds(source),
                 )
             )
         elif source.type == "hackernews":
@@ -342,6 +563,8 @@ def build_collectors(
                 HackerNewsCollector(
                     source_name=source.name,
                     query=str(source.params.get("query", "AI OR LLM OR OpenAI OR Anthropic")),
+                    timeout_seconds=_timeout_seconds(source),
+                    rate_limit_seconds=_rate_limit_seconds(source),
                 )
             )
         else:
@@ -361,6 +584,8 @@ def build_summarizer(name: str, ollama_model: str, ollama_url: str):
 def collect_all(collectors: list[BaseCollector], limit: int) -> list[NewsItem]:
     items: list[NewsItem] = []
     for collector in collectors:
+        if collector.rate_limit_seconds:
+            time.sleep(collector.rate_limit_seconds)
         try:
             items.extend(collector.collect(limit=limit))
         except CollectionError as exc:
@@ -371,6 +596,14 @@ def collect_all(collectors: list[BaseCollector], limit: int) -> list[NewsItem]:
                 "continuing with other sources"
             )
     return items
+
+
+def _timeout_seconds(source: SourceConfig) -> int:
+    return int(source.params.get("timeout_seconds", 15))
+
+
+def _rate_limit_seconds(source: SourceConfig) -> float:
+    return float(source.params.get("rate_limit_seconds", 0.0))
 
 
 def _print_preview(collected: list[NewsItem], ranked: list[NewsItem]) -> None:
@@ -391,5 +624,9 @@ def _print_result(result: PipelineResult) -> None:
     print(f"Deduped: {result.deduped_count}")
     print(f"Selected: {result.selected_count}")
     print(f"Raw JSON: {result.raw_path}")
+    if result.processed_path:
+        print(f"Processed JSON: {result.processed_path}")
+    if result.dedupe_report_path:
+        print(f"Dedupe report: {result.dedupe_report_path}")
     print(f"Wiki notes: {result.wiki_path}")
     print(f"Radio script: {result.script_path}")
