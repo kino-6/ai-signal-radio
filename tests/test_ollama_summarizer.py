@@ -16,6 +16,10 @@ def test_ollama_summarizer_uses_injected_transport() -> None:
                         "fact_summary": "ローカルLLMで要約しました。",
                         "interpretation": "開発者が追うべき変化です。",
                         "action_items": ["元記事を確認する", "次回の実装候補に入れる"],
+                        "spoken_title": "ローカルLLM要約の更新",
+                        "one_line_takeaway": "ローカルLLMでニュース要約を作れます。",
+                        "why_it_matters": "クラウドAPIなしで番組素材を作れるためです。",
+                        "listen_action": "次に見るポイントは、要約品質です。",
                         "source_coverage": "単一ソースの情報です。",
                         "open_questions": ["公式発表はあるか"],
                     }
@@ -41,6 +45,10 @@ def test_ollama_summarizer_uses_injected_transport() -> None:
     assert note.source == "demo"
     assert note.interpretation == "開発者が追うべき変化です。"
     assert note.action_items == ("元記事を確認する", "次回の実装候補に入れる")
+    assert note.spoken_title == "ローカルLLM要約の更新"
+    assert note.one_line_takeaway == "ローカルLLMでニュース要約を作れます。"
+    assert note.why_it_matters == "クラウドAPIなしで番組素材を作れるためです。"
+    assert note.listen_action == "次に見るポイントは、要約品質です。"
     assert note.source_coverage == "単一ソースの情報です。"
     assert note.open_questions == ("公式発表はあるか",)
 
@@ -100,4 +108,7 @@ def test_ollama_summarizer_validates_empty_and_malformed_fields() -> None:
         "元情報を読み、具体的に何が変わったか確認する。",
         "このプロジェクトの監視リストを更新する必要があるか判断する。",
     )
+    assert note.one_line_takeaway == "demo が「AI agent update」について報じています。"
+    assert note.why_it_matters
+    assert note.listen_action
     assert note.open_questions == ("不明",)

@@ -141,6 +141,10 @@ class WikiNote:
     fact_summary: str
     interpretation: str
     action_items: tuple[str, ...]
+    spoken_title: str = ""
+    one_line_takeaway: str = ""
+    why_it_matters: str = ""
+    listen_action: str = ""
     score_reasons: tuple[str, ...] = field(default_factory=tuple)
     source_coverage: str = ""
     dedupe_notes: str = ""
@@ -165,6 +169,10 @@ class WikiNote:
             "fact_summary": self.fact_summary,
             "interpretation": self.interpretation,
             "action_items": list(self.action_items),
+            "spoken_title": self.spoken_title,
+            "one_line_takeaway": self.one_line_takeaway,
+            "why_it_matters": self.why_it_matters,
+            "listen_action": self.listen_action,
             "score_reasons": list(self.score_reasons),
             "source_coverage": self.source_coverage,
             "dedupe_notes": self.dedupe_notes,
@@ -191,6 +199,10 @@ class WikiNote:
             fact_summary=str(data.get("fact_summary", "")),
             interpretation=str(data.get("interpretation", "")),
             action_items=tuple(str(item) for item in data.get("action_items", ())),
+            spoken_title=str(data.get("spoken_title", "")),
+            one_line_takeaway=str(data.get("one_line_takeaway", "")),
+            why_it_matters=str(data.get("why_it_matters", "")),
+            listen_action=str(data.get("listen_action", "")),
             score_reasons=tuple(str(item) for item in data.get("score_reasons", ())),
             source_coverage=str(data.get("source_coverage", "")),
             dedupe_notes=str(data.get("dedupe_notes", "")),

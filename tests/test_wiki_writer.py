@@ -32,6 +32,8 @@ def test_render_wiki_note_contains_frontmatter_and_sections() -> None:
     assert "## Fact Summary" in markdown
     assert "## Interpretation" in markdown
     assert "## Action Items" in markdown
+    assert "## Radio Notes" in markdown
+    assert "- Spoken title:" in markdown
     assert "## Score" in markdown
     assert "- Total: 4.0" in markdown
     assert "## Source Coverage" in markdown
@@ -94,6 +96,28 @@ def test_write_wiki_notes_can_write_under_run_id(tmp_path) -> None:
     assert "demo が「Fresh AI Briefing」について報じています。" in notes[0].fact_summary
     assert "ローカルAI運用に影響する可能性があります。" in notes[0].interpretation
     assert "元情報を読み" in notes[0].action_items[0]
+    assert notes[0].spoken_title == "Fresh AI Briefing"
+    assert "Fresh AI Briefing" in notes[0].one_line_takeaway
+    assert notes[0].why_it_matters
+    assert notes[0].listen_action
+
+
+def test_note_from_item_uses_japanese_radio_takeaway_for_english_summary() -> None:
+    item = NewsItem(
+        source="demo",
+        source_type="demo",
+        title="Open model evaluation harness adds benchmark support",
+        url="https://example.com/eval",
+        summary="A project added benchmark support.",
+        published_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+    )
+
+    note = note_from_item(item)
+
+    assert note.one_line_takeaway == (
+        "demo が「AI評価ベンチマークの更新」について報じています。"
+    )
 
 
 def test_write_wiki_notes_can_clean_stale_daily_files(tmp_path) -> None:

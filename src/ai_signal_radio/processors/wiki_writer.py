@@ -59,6 +59,10 @@ def render_wiki_note(note: WikiNote) -> str:
             "published_at": note.published_at.isoformat(),
             "collected_at": note.collected_at.isoformat(),
             "tags": list(note.tags),
+            "spoken_title": note.spoken_title,
+            "one_line_takeaway": note.one_line_takeaway,
+            "why_it_matters": note.why_it_matters,
+            "listen_action": note.listen_action,
             "score": note.score,
             "score_reasons": list(note.score_reasons),
             "source_coverage": note.source_coverage,
@@ -87,6 +91,11 @@ def render_wiki_note(note: WikiNote) -> str:
         f"{note.interpretation}\n\n"
         "## Action Items\n\n"
         f"{action_items}\n\n"
+        "## Radio Notes\n\n"
+        f"- Spoken title: {note.spoken_title or note.title}\n"
+        f"- Takeaway: {note.one_line_takeaway or note.fact_summary}\n"
+        f"- Why it matters: {note.why_it_matters or note.interpretation}\n"
+        f"- Listen action: {note.listen_action or (note.action_items[0] if note.action_items else '不明')}\n\n"
         "## Score\n\n"
         f"- Total: {note.score}\n"
         "- Reasons:\n"
@@ -155,12 +164,35 @@ def parse_wiki_note(markdown: str) -> WikiNote:
             "fact_summary": sections.get("Fact Summary", "").strip(),
             "interpretation": sections.get("Interpretation", "").strip(),
             "action_items": action_items,
+            **_parse_radio_notes(sections.get("Radio Notes", "")),
             "score_reasons": score_reasons,
             "source_coverage": sections.get("Source Coverage", "").strip(),
             "dedupe_notes": sections.get("Dedupe Notes", "").strip(),
             "open_questions": open_questions,
         }
     )
+
+
+def _parse_radio_notes(section: str) -> dict[str, str]:
+    fields = {
+        "spoken_title": "",
+        "one_line_takeaway": "",
+        "why_it_matters": "",
+        "listen_action": "",
+    }
+    labels = {
+        "Spoken title": "spoken_title",
+        "Takeaway": "one_line_takeaway",
+        "Why it matters": "why_it_matters",
+        "Listen action": "listen_action",
+    }
+    for raw_line in section.splitlines():
+        line = raw_line.removeprefix("- ").strip()
+        for label, field_name in labels.items():
+            prefix = f"{label}:"
+            if line.startswith(prefix):
+                fields[field_name] = line.removeprefix(prefix).strip()
+    return fields
 
 
 def _markdown_paths(input_path: Path) -> list[Path]:

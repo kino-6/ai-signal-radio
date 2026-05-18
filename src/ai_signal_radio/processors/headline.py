@@ -49,6 +49,18 @@ TITLE_REWRITE_RULES = (
         "OpenHarness: 任意のLLMで動くターミナルコーディングエージェント",
     ),
     (re.compile(r"probus.*vuln scanner", re.IGNORECASE), "Probus: AI脆弱性スキャナー"),
+    (
+        re.compile(r"model evaluation harness.*benchmark", re.IGNORECASE),
+        "AI評価ベンチマークの更新",
+    ),
+    (
+        re.compile(r"agent memory.*long tasks", re.IGNORECASE),
+        "長いタスク向けエージェントメモリ研究",
+    ),
+    (
+        re.compile(r"voicevox.*narration workflow", re.IGNORECASE),
+        "VOICEVOX読み上げワークフロー",
+    ),
 )
 
 

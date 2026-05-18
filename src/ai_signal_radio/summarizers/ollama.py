@@ -68,6 +68,22 @@ class OllamaSummarizer:
             fact_summary=_text_field(generated.get("fact_summary"), fallback.fact_summary),
             interpretation=_text_field(generated.get("interpretation"), fallback.interpretation),
             action_items=_list_field(generated.get("action_items"), fallback.action_items),
+            spoken_title=_text_field(generated.get("spoken_title"), fallback.spoken_title, max_chars=80),
+            one_line_takeaway=_text_field(
+                generated.get("one_line_takeaway"),
+                fallback.one_line_takeaway,
+                max_chars=120,
+            ),
+            why_it_matters=_text_field(
+                generated.get("why_it_matters"),
+                fallback.why_it_matters,
+                max_chars=140,
+            ),
+            listen_action=_text_field(
+                generated.get("listen_action"),
+                fallback.listen_action,
+                max_chars=120,
+            ),
             score_reasons=fallback.score_reasons,
             source_coverage=_text_field(generated.get("source_coverage"), fallback.source_coverage),
             dedupe_notes=fallback.dedupe_notes,
@@ -96,6 +112,10 @@ Return only JSON with these keys:
 - fact_summary: 事実だけを1-2文で要約。根拠が不足する場合は「不明」と書く。
 - interpretation: AI開発者・研究者にとっての意味を1-2文で説明。
 - action_items: 次に確認する行動を2個、短い日本語配列で返す。
+- spoken_title: 耳で聞きやすい短い日本語見出し。
+- one_line_takeaway: ラジオで読む1文の要点。
+- why_it_matters: なぜ重要かを1文で説明。
+- listen_action: 聞いたあとに見るべきポイントを1文で説明。
 - source_coverage: この情報が単一ソースか、公式/研究/コミュニティ情報かを1文で説明。
 - open_questions: 追加確認すべき問いを1-2個、短い日本語配列で返す。
 

@@ -25,6 +25,16 @@
 
 ## Improvement Roadmap
 
+### Priority Backlog: Speaking Quality
+
+- [x] P0: wiki 要約と番組用の言葉を分けるため、`spoken_title` / `one_line_takeaway` / `why_it_matters` / `listen_action` を持つ
+- [ ] P1: Daily 冒頭に「今日はこれだけ覚える」を 1 文で入れる
+- [ ] P1: Deep Dive を質問主導にし、Host が事実、Analyst が疑問と論点を挟む
+- [ ] P2: score / source / cluster の理由を、内部語ではなく人間の判断理由に翻訳する
+- [ ] P2: TTS 用に 1 文 40-60 字を目安に分割し、括弧を減らす
+- [ ] P3: 締めの「今日の実装観点」をニュース内容から毎回少し変える
+- [ ] P3: 話速、間、イントネーション preset を用途別に docs 化する
+
 ### Phase 1: Radio Script Editing
 
 - [x] `script_writer` に `briefing` style を追加する

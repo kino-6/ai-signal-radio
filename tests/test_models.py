@@ -39,3 +39,21 @@ def test_news_item_requires_core_fields() -> None:
 
     with pytest.raises(ValueError):
         NewsItem(source="source", title="Title", url="")
+
+
+def test_wiki_note_serializes_radio_fields() -> None:
+    note = NewsItem(
+        source="demo",
+        title="AI Radio Note",
+        url="https://example.com/radio-note",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    from ai_signal_radio.processors.wiki_writer import note_from_item
+
+    wiki_note = note_from_item(note)
+    restored = type(wiki_note).from_dict(wiki_note.to_dict())
+
+    assert restored.spoken_title
+    assert restored.one_line_takeaway
+    assert restored.why_it_matters
+    assert restored.listen_action

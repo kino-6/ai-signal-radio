@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from ai_signal_radio.models import NewsItem, WikiNote
+from ai_signal_radio.processors.headline import radio_title, rewrite_known_headline, shorten_headline
 
 
 def note_from_item(item: NewsItem) -> WikiNote:
@@ -38,6 +41,10 @@ def note_from_item(item: NewsItem) -> WikiNote:
             "元情報を読み、具体的に何が変わったか確認する。",
             "このプロジェクトの監視リストを更新する必要があるか判断する。",
         ),
+        spoken_title=spoken_title_from_item(item),
+        one_line_takeaway=one_line_takeaway_from_item(item, summary),
+        why_it_matters=why_it_matters_from_item(item, interpretation),
+        listen_action="次に見るポイントは、元情報で具体的な変更点を確認することです。",
         score_reasons=score_reasons,
         source_coverage=source_coverage,
         dedupe_notes=dedupe_note,
@@ -50,6 +57,49 @@ def note_from_item(item: NewsItem) -> WikiNote:
         related_titles=cluster["related_titles"],
         related_sources=cluster["related_sources"],
     )
+
+
+def spoken_title_from_item(item: NewsItem) -> str:
+    title = radio_title(item.title)
+    return rewrite_known_headline(title) or title
+
+
+def one_line_takeaway_from_item(item: NewsItem, summary: str) -> str:
+    if item.summary and contains_japanese(item.summary):
+        return first_sentence(summary)
+    return f"{item.source} が「{spoken_title_from_item(item)}」について報じています。"
+
+
+def why_it_matters_from_item(item: NewsItem, interpretation: str) -> str:
+    if item.summary:
+        return first_sentence(interpretation)
+    return (
+        f"{item.source_type} 系の情報として、"
+        "モデル、開発ツール、研究動向、ローカルAI運用への影響を確認する価値があります。"
+    )
+
+
+def first_sentence(text: str) -> str:
+    stripped = " ".join(text.split())
+    if not stripped:
+        return ""
+    end_indexes = [index for index, char in enumerate(stripped) if char in "。.!?"]
+    if end_indexes:
+        return ensure_sentence(stripped[: end_indexes[0] + 1])
+    return ensure_sentence(stripped)
+
+
+def ensure_sentence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    if stripped[-1] in "。.!?！？":
+        return stripped
+    return f"{stripped}。"
+
+
+def contains_japanese(text: str) -> bool:
+    return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text))
 
 
 def score_reasons_from_item(item: NewsItem) -> tuple[str, ...]:

@@ -113,15 +113,15 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
     for index, note in enumerate(main_notes, start=1):
         lines.extend(
             [
-                f"## {index}. {spoken_headline(note)}",
+                f"## {index}. {radio_headline(note)}",
                 "",
                 source_line(note),
                 "",
-                first_sentence(note.fact_summary),
+                one_line_takeaway(note),
                 "",
-                concise_interpretation_line(note),
+                why_it_matters_line(note),
                 "",
-                f"見るポイントは、{first_action(note)}",
+                listen_action_line(note),
                 "",
             ]
         )
@@ -142,7 +142,7 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
             [
                 "## 今日の深掘り候補",
                 "",
-                f"{spoken_headline(candidate)}を深掘り候補にします。",
+                f"{radio_headline(candidate)}を深掘り候補にします。",
                 "",
                 daily_deep_dive_reason(candidate),
                 "",
@@ -169,7 +169,7 @@ def render_dialogue_script(notes: list[WikiNote]) -> str:
     note = display_notes[0]
     lines.extend(
         [
-            f"今日のテーマは「{spoken_headline(note)}」です。",
+            f"今日のテーマは「{radio_headline(note)}」です。",
             "",
             f"Host: {source_line(note)} まず事実から整理します。",
             "",
@@ -204,8 +204,8 @@ def render_dialogue_script(notes: list[WikiNote]) -> str:
 
 
 def quick_news_line(note: WikiNote) -> str:
-    headline = spoken_headline(note)
-    summary = first_sentence(note.fact_summary)
+    headline = radio_headline(note)
+    summary = one_line_takeaway(note)
     if _same_spoken_content(headline, summary):
         return f"- {headline}。{source_line(note)}"
     return f"- {headline}。{source_line(note)} {summary}"
@@ -339,6 +339,26 @@ def source_label(note: WikiNote) -> str:
     if source:
         return source
     return source_type or "unknown source"
+
+
+def radio_headline(note: WikiNote) -> str:
+    return note.spoken_title.strip() or spoken_headline(note)
+
+
+def one_line_takeaway(note: WikiNote) -> str:
+    return _ensure_sentence(note.one_line_takeaway) if note.one_line_takeaway else first_sentence(note.fact_summary)
+
+
+def why_it_matters_line(note: WikiNote) -> str:
+    if note.why_it_matters:
+        return _ensure_sentence(note.why_it_matters)
+    return concise_interpretation_line(note)
+
+
+def listen_action_line(note: WikiNote) -> str:
+    if note.listen_action:
+        return _ensure_sentence(note.listen_action)
+    return f"見るポイントは、{first_action(note)}"
 
 
 def first_action(note: WikiNote) -> str:

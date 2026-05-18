@@ -243,6 +243,34 @@ def test_briefing_uses_japanese_spoken_headline_for_english_title() -> None:
     assert "## 1. AWS Bedrockのプロンプトキャッシュ不備で高額請求" in script
 
 
+def test_briefing_prefers_radio_note_fields() -> None:
+    note = WikiNote(
+        title="Long internal title that should not be spoken",
+        source="example-rss",
+        source_url="https://example.com/radio-fields",
+        source_type="rss",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        tags=("ai",),
+        fact_summary="長い事実要約です。",
+        interpretation="長い解釈です。",
+        action_items=("長いアクションです",),
+        spoken_title="耳で聞く短い見出し",
+        one_line_takeaway="今日覚えることは、番組用の要点を別に持つことです。",
+        why_it_matters="なぜ重要かというと、要約文をそのまま読まずに済むからです。",
+        listen_action="次に見るポイントは、生成された台本の聞きやすさです。",
+    )
+
+    script = render_script([note], style="briefing")
+
+    assert "## 1. 耳で聞く短い見出し" in script
+    assert "今日覚えることは、番組用の要点を別に持つことです。" in script
+    assert "なぜ重要かというと、要約文をそのまま読まずに済むからです。" in script
+    assert "次に見るポイントは、生成された台本の聞きやすさです。" in script
+    assert "長い事実要約です。" not in script
+    assert "長い解釈です。" not in script
+
+
 def test_briefing_mentions_when_source_mix_is_biased() -> None:
     notes = [
         WikiNote(
