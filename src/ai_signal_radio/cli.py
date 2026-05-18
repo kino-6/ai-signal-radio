@@ -7,6 +7,7 @@ import shutil
 import sys
 import time
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ai_signal_radio.collectors.arxiv import ArxivCollector
@@ -332,6 +333,7 @@ def collect_command(
     source_filter: tuple[str, ...] = (),
     dry_run: bool = False,
 ) -> Path | None:
+    run_at = datetime.now(timezone.utc)
     config = load_config(config_path) if config_path.exists() else AppConfig()
     items = collect_all(build_collectors(config.sources, source_filter=source_filter), limit=limit)
     if dry_run:
@@ -340,8 +342,8 @@ def collect_command(
         _print_preview(items, ranked)
         return None
     ensure_data_dirs(data_dir)
-    run_id = timestamp_slug()
-    return save_raw_items(items, data_dir, run_id=run_id)
+    run_id = timestamp_slug(run_at)
+    return save_raw_items(items, data_dir, now=run_at, run_id=run_id)
 
 
 def wiki_command(
@@ -351,6 +353,8 @@ def wiki_command(
     ollama_model: str = "gemma4:latest",
     ollama_url: str = "http://127.0.0.1:11434",
 ) -> list[Path]:
+    run_at = datetime.now(timezone.utc)
+    run_id = timestamp_slug(run_at)
     items = load_raw_items(input_path)
     ranked = (
         items
@@ -363,7 +367,8 @@ def wiki_command(
         output_dir,
         summarizer=summarizer,
         clean_day=True,
-        run_id=timestamp_slug(),
+        now=run_at,
+        run_id=run_id,
     )
     write_topic_pages([load_wiki_notes(path)[0] for path in paths], output_dir / "topics")
     return paths
@@ -540,6 +545,7 @@ def run_command(
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
 ) -> PipelineResult:
+    run_at = datetime.now(timezone.utc)
     config = load_config(config_path) if config_path.exists() else AppConfig()
     collected, collection_failures = collect_all_with_report(
         build_collectors(config.sources, source_filter=source_filter),
@@ -564,25 +570,28 @@ def run_command(
         )
 
     ensure_data_dirs(data_dir)
-    run_id = timestamp_slug()
-    raw_path = save_raw_items(collected, data_dir, run_id=run_id)
-    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
-    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_id = timestamp_slug(run_at)
+    raw_path = save_raw_items(collected, data_dir, now=run_at, run_id=run_id)
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id, now=run_at)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id, now=run_at)
     run_metadata_path = save_run_metadata(
         _run_metadata(
             collected=collected,
             processed=processed,
             collection_failures=collection_failures,
             run_id=run_id,
+            run_at=run_at,
         ),
         data_dir,
         run_id,
+        now=run_at,
     )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
         data_dir,
         run_id=run_id,
+        run_at=run_at,
         summarizer=summarizer,
         script_style=script_style,
     )
@@ -608,22 +617,31 @@ def rebuild_command(
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
 ) -> PipelineResult:
+    run_at = datetime.now(timezone.utc)
     items = load_raw_items(input_path)
     dedupe_result, ranked, processed = _process_items(items, limit=limit)
     ensure_data_dirs(data_dir)
-    run_id = timestamp_slug()
-    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
-    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_id = timestamp_slug(run_at)
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id, now=run_at)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id, now=run_at)
     run_metadata_path = save_run_metadata(
-        _run_metadata(collected=items, processed=processed, collection_failures=[], run_id=run_id),
+        _run_metadata(
+            collected=items,
+            processed=processed,
+            collection_failures=[],
+            run_id=run_id,
+            run_at=run_at,
+        ),
         data_dir,
         run_id,
+        now=run_at,
     )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
         data_dir,
         run_id=run_id,
+        run_at=run_at,
         summarizer=summarizer,
         script_style=script_style,
     )
@@ -641,19 +659,32 @@ def rebuild_command(
 
 
 def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResult:
+    run_at = datetime.now(timezone.utc)
     ensure_data_dirs(data_dir)
     collected = DemoCollector("demo").collect(limit=limit)
     dedupe_result, ranked, processed = _process_items(collected, limit=limit)
-    run_id = timestamp_slug()
-    raw_path = save_raw_items(collected, data_dir, run_id=run_id)
-    processed_path = save_processed_items(processed, data_dir, run_id=run_id)
-    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id)
+    run_id = timestamp_slug(run_at)
+    raw_path = save_raw_items(collected, data_dir, now=run_at, run_id=run_id)
+    processed_path = save_processed_items(processed, data_dir, run_id=run_id, now=run_at)
+    dedupe_report_path = save_dedupe_report(dedupe_result, data_dir, run_id, now=run_at)
     run_metadata_path = save_run_metadata(
-        _run_metadata(collected=collected, processed=processed, collection_failures=[], run_id=run_id),
+        _run_metadata(
+            collected=collected,
+            processed=processed,
+            collection_failures=[],
+            run_id=run_id,
+            run_at=run_at,
+        ),
         data_dir,
         run_id,
+        now=run_at,
     )
-    wiki_path, script_path = _write_pipeline_outputs(processed, data_dir, run_id=run_id)
+    wiki_path, script_path = _write_pipeline_outputs(
+        processed,
+        data_dir,
+        run_id=run_id,
+        run_at=run_at,
+    )
     return PipelineResult(
         collected_count=len(collected),
         deduped_count=len(dedupe_result.selected_items),
@@ -671,12 +702,14 @@ def _write_pipeline_outputs(
     items: list[NewsItem],
     data_dir: Path,
     run_id: str,
+    run_at: datetime,
     summarizer: Summarizer | None = None,
     script_style: str = "standard",
 ) -> tuple[Path, Path]:
     wiki_paths = write_wiki_notes(
         items,
         data_dir / "wiki",
+        now=run_at,
         summarizer=summarizer,
         clean_day=True,
         run_id=run_id,
@@ -684,7 +717,7 @@ def _write_pipeline_outputs(
     notes = [load_wiki_notes(path)[0] for path in wiki_paths]
     script_path = write_script(
         notes,
-        data_dir / "scripts" / f"{date_slug()}-{run_id}-daily.md",
+        data_dir / "scripts" / f"{date_slug(run_at)}-{run_id}-daily.md",
         style=script_style,
     )
     write_topic_pages(notes, data_dir / "wiki" / "topics")
@@ -840,9 +873,11 @@ def _run_metadata(
     processed: list[NewsItem],
     collection_failures: list[dict[str, str]],
     run_id: str,
+    run_at: datetime | None = None,
 ) -> dict[str, object]:
     return {
         "run_id": run_id,
+        "run_at": run_at.astimezone(timezone.utc).isoformat() if run_at else "",
         "collection_failures": collection_failures,
         "source_coverage": {
             "collected": _source_coverage(collected),

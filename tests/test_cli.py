@@ -271,6 +271,30 @@ def test_run_command_saves_processed_ranked_items(tmp_path) -> None:
     assert "topic_cluster" in processed[0].metadata
 
 
+def test_write_pipeline_outputs_uses_single_run_timestamp(tmp_path) -> None:
+    run_at = datetime(2026, 5, 18, 1, 2, 3, tzinfo=timezone.utc)
+    run_id = "20260518T010203000000Z"
+    item = NewsItem(
+        source="demo",
+        source_type="demo",
+        title="Timestamped AI item",
+        url="https://example.com/timestamped",
+        published_at=datetime(2026, 5, 17, tzinfo=timezone.utc),
+        summary="時刻の揃った出力を確認します。",
+        tags=("ai",),
+    )
+
+    wiki_path, script_path = cli._write_pipeline_outputs(
+        [item],
+        tmp_path / "data",
+        run_id=run_id,
+        run_at=run_at,
+    )
+
+    assert wiki_path == tmp_path / "data" / "wiki" / "2026-05-18" / run_id
+    assert script_path.name == f"2026-05-18-{run_id}-daily.md"
+
+
 def test_collect_all_with_report_records_failures() -> None:
     class FailingCollector(BaseCollector):
         def collect(self, limit: int = 20) -> list[NewsItem]:

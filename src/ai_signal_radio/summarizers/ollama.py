@@ -8,7 +8,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from ai_signal_radio.models import NewsItem, WikiNote
-from ai_signal_radio.processors.wiki_writer import note_from_item
+from ai_signal_radio.processors.wiki_note_builder import note_from_item
 
 Transport = Callable[[Request, int], bytes]
 

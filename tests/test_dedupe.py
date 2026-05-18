@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from ai_signal_radio.canonical import canonical_key
 from ai_signal_radio.models import NewsItem
 from ai_signal_radio.processors.dedupe import (
     canonical_url,
@@ -15,8 +16,35 @@ def test_canonical_url_removes_tracking_and_fragments() -> None:
     assert canonical_url(url) == "https://example.com/story?keep=1"
 
 
+def test_canonical_url_removes_common_tracking_parameters() -> None:
+    first = canonical_url(
+        "https://example.com/story?utm_source=hn&fbclid=1&gclid=2&mc_cid=3&mc_eid=4&ref=x&keep=1"
+    )
+    second = canonical_url("https://example.com/story?keep=1")
+
+    assert first == second
+
+
+def test_canonical_url_sorts_remaining_query_parameters() -> None:
+    assert canonical_url("https://example.com/story?b=2&a=1") == canonical_url(
+        "https://example.com/story?a=1&b=2"
+    )
+
+
 def test_normalize_title_compacts_punctuation_and_case() -> None:
     assert normalize_title("New AI Tool:  Really?") == "new ai tool really"
+
+
+def test_news_item_uses_shared_canonical_key_and_title_normalization() -> None:
+    item = NewsItem(
+        source="rss",
+        title="New AI Tool:  Really?",
+        url="https://example.com/story?utm_campaign=x",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert item.canonical_key == canonical_key(item.url, item.title)
+    assert normalize_title(item.title) == "new ai tool really"
 
 
 def test_dedupe_items_prefers_richer_duplicate() -> None:

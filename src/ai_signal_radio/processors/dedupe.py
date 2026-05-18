@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from ai_signal_radio.canonical import canonical_url, normalize_title
 from ai_signal_radio.models import NewsItem
-
-TRACKING_PREFIXES = ("utm_",)
-TRACKING_PARAMS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref"}
 
 
 @dataclass(frozen=True)
@@ -84,30 +80,6 @@ def dedupe_items_with_report(items: list[NewsItem]) -> DedupeResult:
         selected_items=winners,
         duplicate_groups=tuple(groups),
     )
-
-
-def canonical_url(url: str) -> str:
-    parsed = urlsplit(url.strip())
-    query = [
-        (key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if key not in TRACKING_PARAMS and not key.startswith(TRACKING_PREFIXES)
-    ]
-    path = parsed.path.rstrip("/") or "/"
-    return urlunsplit(
-        (
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            path,
-            urlencode(query, doseq=True),
-            "",
-        )
-    )
-
-
-def normalize_title(title: str) -> str:
-    normalized = re.sub(r"\W+", " ", title.lower())
-    return " ".join(normalized.split())
 
 
 def _find_duplicate(winners: list[NewsItem], item: NewsItem) -> tuple[int, str, str] | None:

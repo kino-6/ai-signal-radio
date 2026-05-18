@@ -54,6 +54,7 @@ uv run ai-signal collect --config config/sources.yml --limit 20
 uv run ai-signal run \
   --config config/sources.live.example.yml \
   --limit 8 \
+  --script-style briefing \
   --summarizer ollama \
   --ollama-model gemma4:latest
 ```
@@ -98,11 +99,13 @@ uv run ai-signal wiki \
 
 ## Script 生成
 
+毎日の聞き流しには `briefing` style を推奨します。CLI の互換性のためデフォルトは `standard` のままですが、実運用では `briefing` が短く聞きやすい出力になります。
+
 ```bash
-uv run ai-signal script --input data/wiki --output data/scripts/daily.md --style standard
+uv run ai-signal script --input data/wiki --output data/scripts/daily.md --style briefing
 ```
 
-生成される script は VOICEVOX などの TTS で読みやすいよう、短い日本語文を中心にしています。`--style short|standard|detailed` で読み上げの長さを変えられます。
+生成される script は VOICEVOX などの TTS で読みやすいよう、短い日本語文を中心にしています。`--style short|standard|detailed|briefing|dialogue` で読み上げの長さや形式を変えられます。
 
 ## Rebuild
 
@@ -113,8 +116,12 @@ uv run ai-signal rebuild \
   --input data/raw/latest.json \
   --data-dir data \
   --limit 8 \
-  --script-style standard
+  --script-style briefing
 ```
+
+## Topic Clustering
+
+topic clustering は、product term と keyword overlap を使った軽量な決定的ヒューリスティックです。関連しない項目をまとめることも、関連する項目を見逃すこともあります。事実認定ではなく、聞くとき・読むときのナビゲーション補助として扱ってください。
 
 ## ディレクトリ構成
 

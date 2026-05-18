@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
-import re
 from typing import Any
+
+from ai_signal_radio.canonical import canonical_key as make_canonical_key
+from ai_signal_radio.canonical import content_hash as make_content_hash
 
 
 def utc_now() -> datetime:
@@ -51,8 +53,8 @@ class NewsItem:
         published_at = ensure_aware_utc(self.published_at)
         collected_at = ensure_aware_utc(self.collected_at)
         item_id = self.id.strip() or _stable_id(source=source, url=url, title=title)
-        canonical_key = self.canonical_key.strip() or _canonical_key(url=url, title=title)
-        content_hash = self.content_hash.strip() or _content_hash(
+        canonical_key = self.canonical_key.strip() or make_canonical_key(url=url, title=title)
+        content_hash = self.content_hash.strip() or make_content_hash(
             title=title,
             summary=summary,
             content=content,
@@ -219,18 +221,6 @@ class PipelineResult:
 
 def _stable_id(source: str, url: str, title: str) -> str:
     payload = f"{source}\0{url}\0{title}".encode("utf-8")
-    return sha256(payload).hexdigest()[:16]
-
-
-def _canonical_key(url: str, title: str) -> str:
-    normalized_title = re.sub(r"\W+", " ", title.lower())
-    normalized_title = " ".join(normalized_title.split())
-    payload = f"{url.strip().lower()}\0{normalized_title}".encode("utf-8")
-    return sha256(payload).hexdigest()[:16]
-
-
-def _content_hash(title: str, summary: str, content: str) -> str:
-    payload = f"{title}\0{summary}\0{content}".encode("utf-8")
     return sha256(payload).hexdigest()[:16]
 
 

@@ -10,6 +10,8 @@ from typing import Callable
 import yaml
 
 from ai_signal_radio.models import NewsItem, WikiNote
+from ai_signal_radio.processors.topic_pages import render_topic_page, slugify, write_topic_pages
+from ai_signal_radio.processors.wiki_note_builder import note_from_item
 from ai_signal_radio.storage import date_slug
 
 Summarizer = Callable[[NewsItem], WikiNote]
@@ -41,57 +43,10 @@ def write_wiki_notes(
     paths: list[Path] = []
     for index, item in enumerate(items, start=1):
         note = summarizer(item) if summarizer else note_from_item(item)
-        path = day_dir / f"{index:02d}-{_slugify(note.title)}.md"
+        path = day_dir / f"{index:02d}-{slugify(note.title)}.md"
         path.write_text(render_wiki_note(note), encoding="utf-8")
         paths.append(path)
     return paths
-
-
-def note_from_item(item: NewsItem) -> WikiNote:
-    topic = item.title.rstrip(".")
-    summary = item.summary or f"{item.source} reported: {topic}."
-    interpretation = (
-        f"This item may matter for AI builders because it touches {item.source_type} "
-        "signals that can affect models, tools, research, or local workflows."
-    )
-    dedupe_note = (
-        _dedupe_notes(item)
-        or f"canonical_key={item.canonical_key}; content_hash={item.content_hash}."
-    )
-    score_reasons = _score_reasons(item)
-    cluster = _topic_cluster(item)
-    source_coverage = f"Single item from {item.source} ({item.source_type})."
-    if cluster["size"] > 1:
-        source_coverage = (
-            f"Topic cluster '{cluster['label']}' includes {cluster['size']} related item(s) "
-            f"from {', '.join(cluster['related_sources']) or item.source}."
-        )
-    return WikiNote(
-        title=item.title,
-        source=item.source,
-        source_url=item.url,
-        source_type=item.source_type,
-        published_at=item.published_at,
-        collected_at=item.collected_at,
-        tags=item.tags or ("ai",),
-        fact_summary=summary,
-        interpretation=interpretation,
-        action_items=(
-            "Read the source and confirm the concrete change.",
-            "Decide whether this should update the project watch list.",
-        ),
-        score_reasons=score_reasons,
-        source_coverage=source_coverage,
-        dedupe_notes=dedupe_note,
-        open_questions=("不明",),
-        score=item.score,
-        topic_cluster_id=cluster["id"],
-        topic_cluster_label=cluster["label"],
-        topic_cluster_size=cluster["size"],
-        topic_cluster_representative=cluster["is_representative"],
-        related_titles=cluster["related_titles"],
-        related_sources=cluster["related_sources"],
-    )
 
 
 def render_wiki_note(note: WikiNote) -> str:
@@ -162,46 +117,6 @@ def render_wiki_note(note: WikiNote) -> str:
         f"- Type: {note.source_type}\n"
         f"- URL: {note.source_url}\n"
     )
-
-
-def write_topic_pages(notes: list[WikiNote], output_dir: Path) -> list[Path]:
-    """Write lightweight topic index pages grouped by tag."""
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    grouped: dict[str, list[WikiNote]] = {}
-    for note in notes:
-        for tag in note.tags or ("ai",):
-            grouped.setdefault(tag, []).append(note)
-
-    paths: list[Path] = []
-    for tag, topic_notes in sorted(grouped.items()):
-        path = output_dir / f"{_slugify(tag)}.md"
-        path.write_text(render_topic_page(tag, topic_notes), encoding="utf-8")
-        paths.append(path)
-    return paths
-
-
-def render_topic_page(tag: str, notes: list[WikiNote]) -> str:
-    lines = [
-        f"# Topic: {tag}",
-        "",
-        f"関連ノート: {len(notes)} 件",
-        "",
-    ]
-    for note in sorted(notes, key=lambda item: item.published_at, reverse=True):
-        lines.extend(
-            [
-                f"## {note.title}",
-                "",
-                f"- Source: {note.source}",
-                f"- URL: {note.source_url}",
-                f"- Score: {note.score}",
-                "",
-                note.fact_summary,
-                "",
-            ]
-        )
-    return "\n".join(lines)
 
 
 def load_wiki_notes(input_path: Path) -> list[WikiNote]:
@@ -285,61 +200,6 @@ def _parse_sections(body: str) -> dict[str, str]:
         elif current:
             sections[current].append(line)
     return {name: "\n".join(lines).strip() for name, lines in sections.items()}
-
-
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
-    return slug[:80] or "note"
-
-
-def _score_reasons(item: NewsItem) -> tuple[str, ...]:
-    breakdown = item.metadata.get("score_breakdown")
-    if not isinstance(breakdown, dict):
-        return ("不明",)
-    reasons: list[str] = []
-    keywords = breakdown.get("keyword_matches")
-    if isinstance(keywords, list) and keywords:
-        reasons.append(f"keyword_matches={', '.join(str(keyword) for keyword in keywords)}")
-    for key in ("keyword_score", "official_source_bonus", "research_bonus", "hn_points_bonus"):
-        value = breakdown.get(key)
-        if isinstance(value, int | float) and value:
-            reasons.append(f"{key}={value}")
-    return tuple(reasons) or ("不明",)
-
-
-def _dedupe_notes(item: NewsItem) -> str:
-    dedupe = item.metadata.get("dedupe")
-    if not isinstance(dedupe, dict):
-        return ""
-    duplicate_count = dedupe.get("duplicate_count")
-    groups = dedupe.get("duplicate_groups")
-    if not duplicate_count:
-        return "No duplicates found for this selected item."
-    if isinstance(groups, list):
-        reasons = sorted({str(group.get("reason", "unknown")) for group in groups if isinstance(group, dict)})
-        return f"Retained over {duplicate_count} duplicate(s): {', '.join(reasons) or '不明'}."
-    return f"Retained over {duplicate_count} duplicate(s)."
-
-
-def _topic_cluster(item: NewsItem) -> dict[str, object]:
-    cluster = item.metadata.get("topic_cluster")
-    if not isinstance(cluster, dict):
-        return {
-            "id": "",
-            "label": "",
-            "size": 1,
-            "is_representative": True,
-            "related_titles": (),
-            "related_sources": (item.source,),
-        }
-    return {
-        "id": str(cluster.get("id", "")),
-        "label": str(cluster.get("label", "")),
-        "size": int(cluster.get("size", 1) or 1),
-        "is_representative": bool(cluster.get("is_representative", True)),
-        "related_titles": tuple(str(title) for title in cluster.get("related_titles", ())),
-        "related_sources": tuple(str(source) for source in cluster.get("related_sources", ())),
-    }
 
 
 def write_wiki(items: list[NewsItem], output_dir: Path, now: datetime | None = None) -> Path:

@@ -91,6 +91,9 @@ def test_write_wiki_notes_can_write_under_run_id(tmp_path) -> None:
     assert paths[0].parent.name == "20260103T000000Z"
     assert paths[0].parent.parent.name == "2026-01-03"
     assert notes[0].title == "Fresh AI Briefing"
+    assert "demo が「Fresh AI Briefing」について報じています。" in notes[0].fact_summary
+    assert "ローカルAI運用に影響する可能性があります。" in notes[0].interpretation
+    assert "元情報を読み" in notes[0].action_items[0]
 
 
 def test_write_wiki_notes_can_clean_stale_daily_files(tmp_path) -> None:

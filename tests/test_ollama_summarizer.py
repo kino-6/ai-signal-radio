@@ -97,7 +97,7 @@ def test_ollama_summarizer_validates_empty_and_malformed_fields() -> None:
     assert len(note.interpretation) <= 320
     assert note.interpretation.endswith("…")
     assert note.action_items == (
-        "Read the source and confirm the concrete change.",
-        "Decide whether this should update the project watch list.",
+        "元情報を読み、具体的に何が変わったか確認する。",
+        "このプロジェクトの監視リストを更新する必要があるか判断する。",
     )
     assert note.open_questions == ("不明",)

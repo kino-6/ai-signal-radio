@@ -87,7 +87,12 @@ def save_run_metadata(
     return latest_path
 
 
-def save_dedupe_report(report: DedupeResult, data_dir: Path, run_id: str) -> Path:
+def save_dedupe_report(
+    report: DedupeResult,
+    data_dir: Path,
+    run_id: str,
+    now: datetime | None = None,
+) -> Path:
     ensure_data_dirs(data_dir)
     archive_path = data_dir / "raw" / f"{run_id}-dedupe.json"
     latest_path = data_dir / "raw" / "latest-dedupe.json"
