@@ -14,6 +14,7 @@ ai-signal-radio = "ai_signal_radio.cli:main"
 
 [dependency-groups]
 dev = [
+  "mkdocs>=1.6.0",
   "pytest>=8.0.0",
 ]
 

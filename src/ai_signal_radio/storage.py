@@ -6,6 +6,7 @@ import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from ai_signal_radio.models import NewsItem
 from ai_signal_radio.processors.dedupe import DedupeResult
@@ -61,6 +62,25 @@ def save_processed_items(
     payload = [item.to_dict() for item in items]
     archive_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    shutil.copyfile(archive_path, latest_path)
+    return latest_path
+
+
+def save_run_metadata(
+    metadata: dict[str, Any],
+    data_dir: Path,
+    run_id: str,
+    now: datetime | None = None,
+) -> Path:
+    ensure_data_dirs(data_dir)
+    day_dir = data_dir / "processed" / date_slug(now)
+    day_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = day_dir / f"{run_id}-metadata.json"
+    latest_path = data_dir / "processed" / "latest-metadata.json"
+    archive_path.write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     shutil.copyfile(archive_path, latest_path)

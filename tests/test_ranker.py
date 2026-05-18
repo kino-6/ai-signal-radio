@@ -121,3 +121,34 @@ def test_rank_items_fills_with_hackernews_when_no_other_sources_exist() -> None:
     ranked = rank_items(items, limit=4)
 
     assert len(ranked) == 4
+
+
+def test_rank_items_uses_configurable_source_limits() -> None:
+    published = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    hn_items = [
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title=f"AI agent model discussion {index}",
+            url=f"https://news.ycombinator.com/item?id={index}",
+            published_at=published,
+            metadata={"points": 500},
+        )
+        for index in range(4)
+    ]
+    rss_item = NewsItem(
+        source="OpenAI Blog",
+        source_type="rss",
+        title="OpenAI model release",
+        url="https://openai.com/example",
+        published_at=published,
+    )
+    config = RankerConfig(
+        min_source_types={"rss": 1},
+        max_source_types={"hackernews": 1},
+    )
+
+    ranked = rank_items([*hn_items, rss_item], limit=3, config=config)
+
+    assert sum(item.source_type == "hackernews" for item in ranked) <= 1
+    assert any(item.source_type == "rss" for item in ranked)

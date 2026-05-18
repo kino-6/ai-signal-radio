@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from ai_signal_radio import cli
+from ai_signal_radio.collectors.base import BaseCollector, CollectionError
 from ai_signal_radio.config import SourceConfig
 from ai_signal_radio.models import NewsItem
 from ai_signal_radio.storage import load_raw_items, save_raw_items
@@ -143,3 +144,21 @@ def test_run_command_saves_processed_ranked_items(tmp_path) -> None:
     assert processed[0].score >= processed[1].score
     assert "score_breakdown" in processed[0].metadata
     assert "dedupe" in processed[0].metadata
+    assert "topic_cluster" in processed[0].metadata
+
+
+def test_collect_all_with_report_records_failures() -> None:
+    class FailingCollector(BaseCollector):
+        def collect(self, limit: int = 20) -> list[NewsItem]:
+            raise CollectionError("HTTP 429")
+
+    items, failures = cli.collect_all_with_report([FailingCollector("arxiv-ai")], limit=5)
+
+    assert items == []
+    assert failures == [
+        {
+            "source": "arxiv-ai",
+            "error_type": "CollectionError",
+            "message": "HTTP 429",
+        }
+    ]

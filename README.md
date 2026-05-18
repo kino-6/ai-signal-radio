@@ -203,6 +203,24 @@ uv run pytest
 
 GitHub Actions でも push / pull request 時に pytest だけを実行します。
 
+## MkDocs Preview
+
+生成済みの wiki / script をブラウザで読むために、MkDocs 用のローカルプレビューを作れます。
+
+```bash
+uv run ai-signal demo
+uv run ai-signal docs
+uv run mkdocs serve
+```
+
+`ai-signal docs` は `data/wiki`、`data/scripts/daily.md`、`data/processed/latest.json` から `docs/generated/` を作ります。`docs/generated/` と `site/` は git 管理しません。
+
+静的ビルドを確認する場合:
+
+```bash
+uv run mkdocs build --strict
+```
+
 ## ローカル日次実行
 
 `launchd` や `cron` で日次実行する例は [Local Scheduling](docs/SCHEDULING.md) に置いています。

@@ -3,6 +3,8 @@
 __pycache__/
 *.py[cod]
 config/sources.yml
+site/
+docs/generated/
 
 data/raw/*
 data/processed/*

@@ -73,6 +73,12 @@ class OllamaSummarizer:
             dedupe_notes=fallback.dedupe_notes,
             open_questions=_list_field(generated.get("open_questions"), fallback.open_questions),
             score=item.score,
+            topic_cluster_id=fallback.topic_cluster_id,
+            topic_cluster_label=fallback.topic_cluster_label,
+            topic_cluster_size=fallback.topic_cluster_size,
+            topic_cluster_representative=fallback.topic_cluster_representative,
+            related_titles=fallback.related_titles,
+            related_sources=fallback.related_sources,
         )
 
 
