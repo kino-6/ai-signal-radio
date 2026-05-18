@@ -1,28 +1,17 @@
 sources:
-  - name: demo
-    type: demo
-    enabled: true
-    params: {}
-
   - name: arxiv-ai
     type: arxiv
-    enabled: false
+    enabled: true
     params:
       search_query: "cat:cs.AI OR cat:cs.CL OR cat:cs.LG"
       max_results: 10
 
   - name: hacker-news-ai
     type: hackernews
-    enabled: false
+    enabled: true
     params:
-      query: "AI OR LLM OR OpenAI OR Anthropic"
+      query: "AI LLM OpenAI Anthropic agent model"
       limit: 10
-
-  - name: example-rss
-    type: rss
-    enabled: false
-    url: "https://example.com/feed.xml"
-    params: {}
 
 tts:
   enabled: false

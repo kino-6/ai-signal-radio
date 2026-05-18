@@ -1,55 +1,52 @@
-"""Radio-style script generation."""
+"""Radio-style script generation from wiki notes."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
-from ai_signal_radio.models import NewsItem
-from ai_signal_radio.storage import date_slug
+from ai_signal_radio.models import WikiNote
 
 
-def write_script(items: list[NewsItem], output_dir: Path, now: datetime | None = None) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{date_slug(now)}-radio-script.md"
-    path.write_text(render_script(items, now), encoding="utf-8")
-    return path
+def write_script(notes: list[WikiNote], output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_script(notes), encoding="utf-8")
+    return output_path
 
 
-def render_script(items: list[NewsItem], now: datetime | None = None) -> str:
-    generated = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+def render_script(notes: list[WikiNote]) -> str:
     lines = [
-        f"# AI Signal Radio Script - {generated:%Y-%m-%d}",
+        "# Daily AI Signal Radio",
         "",
-        "Good day. This is AI Signal Radio, with a short local-first briefing.",
+        "こんにちは。今日のAIニュースです。",
+        "",
+        f"今日の注目トピックは {len(notes)} 件です。",
         "",
     ]
 
-    if not items:
+    if not notes:
         lines.extend(
             [
-                "No fresh items were collected for this run.",
+                "今日はまだ紹介できるトピックがありません。",
                 "",
-                "That is the signal for now.",
+                "それでは、今日もよい開発を。",
                 "",
             ]
         )
         return "\n".join(lines)
 
-    for item in items:
-        summary = item.summary or "Details are still sparse, but the item is worth tracking."
+    for index, note in enumerate(notes, start=1):
         lines.extend(
             [
-                f"Next: {item.title}.",
-                summary,
+                f"## {index}. {note.title}",
+                "",
+                f"取得元は {note.source} です。",
+                "",
+                note.fact_summary,
+                "",
+                note.interpretation,
                 "",
             ]
         )
 
-    lines.extend(
-        [
-            "That is the signal for now. Archive the notes, keep the context, and stay tuned.",
-            "",
-        ]
-    )
+    lines.extend(["それでは、今日もよい開発を。", ""])
     return "\n".join(lines)

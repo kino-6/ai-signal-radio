@@ -22,4 +22,8 @@ class ArxivCollector(RssCollector):
                 "max_results": str(max_results),
             }
         )
-        super().__init__(source_name=source_name, url=f"https://export.arxiv.org/api/query?{query}")
+        super().__init__(
+            source_name=source_name,
+            url=f"https://export.arxiv.org/api/query?{query}",
+            source_type="arxiv",
+        )

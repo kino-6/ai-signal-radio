@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,10 +29,15 @@ def date_slug(now: datetime | None = None) -> str:
 
 def save_raw_items(items: list[NewsItem], data_dir: Path, now: datetime | None = None) -> Path:
     ensure_data_dirs(data_dir)
-    path = data_dir / "raw" / f"{timestamp_slug(now)}-items.json"
+    archive_path = data_dir / "raw" / f"{timestamp_slug(now)}-items.json"
+    latest_path = data_dir / "raw" / "latest.json"
     payload = [item.to_dict() for item in items]
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return path
+    archive_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    shutil.copyfile(archive_path, latest_path)
+    return latest_path
 
 
 def load_raw_items(path: Path) -> list[NewsItem]:

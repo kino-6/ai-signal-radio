@@ -13,48 +13,58 @@ from ai_signal_radio.models import NewsItem
 
 
 class RssCollector(BaseCollector):
-    def __init__(self, source_name: str, url: str, timeout_seconds: int = 15) -> None:
+    def __init__(
+        self,
+        source_name: str,
+        url: str,
+        timeout_seconds: int = 15,
+        source_type: str = "rss",
+    ) -> None:
         super().__init__(source_name)
         self.url = url
         self.timeout_seconds = timeout_seconds
+        self.source_type = source_type
 
     def collect(self, limit: int = 20) -> list[NewsItem]:
         try:
-            request = Request(self.url, headers={"User-Agent": "ai-signal-radio/0.1"})
+            request = Request(self.url, headers={"User-Agent": "ai-signal/0.1"})
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 content = response.read()
             root = ElementTree.fromstring(content)
         except Exception as exc:  # noqa: BLE001
-            raise CollectionError(f"Failed to fetch RSS source {self.source_name}: {exc}") from exc
+            raise CollectionError(f"failed to fetch or parse RSS/Atom feed: {exc}") from exc
 
-        items = _parse_rss(root, self.source_name)
+        items = _parse_rss(root, self.source_name, self.source_type)
         if not items:
-            items = _parse_atom(root, self.source_name)
+            items = _parse_atom(root, self.source_name, self.source_type)
         return items[:limit]
 
 
-def _parse_rss(root: ElementTree.Element, source_name: str) -> list[NewsItem]:
+def _parse_rss(root: ElementTree.Element, source_name: str, source_type: str = "rss") -> list[NewsItem]:
     items: list[NewsItem] = []
     for element in root.findall(".//item"):
         title = _text(element, "title")
         link = _text(element, "link")
         summary = _text(element, "description")
+        content = summary or _text(element, "content:encoded")
         published = _parse_date(_text(element, "pubDate"))
         if title and link:
             items.append(
                 NewsItem(
                     source=source_name,
+                    source_type=source_type,
                     title=title,
                     url=link,
                     summary=summary,
+                    content=content,
                     published_at=published,
-                    tags=("rss",),
+                    tags=(source_type,),
                 )
             )
     return items
 
 
-def _parse_atom(root: ElementTree.Element, source_name: str) -> list[NewsItem]:
+def _parse_atom(root: ElementTree.Element, source_name: str, source_type: str = "rss") -> list[NewsItem]:
     namespace = {"atom": "http://www.w3.org/2005/Atom"}
     items: list[NewsItem] = []
     entries = root.findall(".//atom:entry", namespace) or root.findall(".//entry")
@@ -75,11 +85,13 @@ def _parse_atom(root: ElementTree.Element, source_name: str) -> list[NewsItem]:
             items.append(
                 NewsItem(
                     source=source_name,
+                    source_type=source_type,
                     title=title,
                     url=link,
                     summary=summary,
+                    content=summary,
                     published_at=published,
-                    tags=("atom",),
+                    tags=(source_type, "atom"),
                 )
             )
     return items
@@ -88,7 +100,10 @@ def _parse_atom(root: ElementTree.Element, source_name: str) -> list[NewsItem]:
 def _text(
     element: ElementTree.Element, path: str, namespace: dict[str, str] | None = None
 ) -> str:
-    child = element.find(path, namespace or {})
+    try:
+        child = element.find(path, namespace or {})
+    except SyntaxError:
+        return ""
     if child is None or child.text is None:
         return ""
     return " ".join(unescape(child.text).split())

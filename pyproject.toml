@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
+ai-signal = "ai_signal_radio.cli:main"
 ai-signal-radio = "ai_signal_radio.cli:main"
 
 [dependency-groups]
