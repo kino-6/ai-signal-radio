@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ai_signal_radio.config import RankerConfig
@@ -21,6 +21,36 @@ KEYWORDS = (
 )
 
 OFFICIAL_SOURCES = ("openai", "anthropic", "google", "hugging face", "microsoft", "meta")
+
+
+@dataclass
+class _SelectionState:
+    limit: int
+    items: list[NewsItem] = field(default_factory=list)
+    ids: set[str] = field(default_factory=set)
+    cluster_counts: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def has_room(self) -> bool:
+        return len(self.items) < self.limit
+
+    def source_count(self, source_type: str) -> int:
+        return sum(item.source_type == source_type for item in self.items)
+
+    def topic_cluster_count(self, item: NewsItem) -> int:
+        cluster_id = _topic_cluster_id(item)
+        if not cluster_id:
+            return 0
+        return self.cluster_counts.get(cluster_id, 0)
+
+    def append(self, item: NewsItem) -> None:
+        if not self.has_room or item.id in self.ids:
+            return
+        self.items.append(item)
+        self.ids.add(item.id)
+        cluster_id = _topic_cluster_id(item)
+        if cluster_id:
+            self.cluster_counts[cluster_id] = self.cluster_counts.get(cluster_id, 0) + 1
 
 
 def rank_items(
@@ -90,66 +120,102 @@ def _select_with_source_diversity(
     if len(items) <= limit:
         return items
 
-    selected: list[NewsItem] = []
-    selected_ids: set[str] = set()
-    selected_cluster_counts: dict[str, int] = {}
+    state = _SelectionState(limit=limit)
 
-    min_by_type = _minimum_source_type_counts(items, limit, config)
-    for source_type, minimum in min_by_type.items():
-        for item in _items_of_type(items, source_type):
-            if _source_type_count(selected, source_type) >= minimum:
-                break
-            if _topic_cluster_count(selected_cluster_counts, item) >= config.max_topic_cluster_items:
-                continue
-            _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
-        for item in _items_of_type(items, source_type):
-            if _source_type_count(selected, source_type) >= minimum:
-                break
-            _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
+    _satisfy_minimum_source_types(items, state, config)
 
     max_by_type = _maximum_source_type_counts(limit, config)
-    for item in items:
-        if item.id in selected_ids:
-            continue
-        type_limit = max_by_type.get(item.source_type)
-        if type_limit is not None and _source_type_count(selected, item.source_type) >= type_limit:
-            continue
-        if _topic_cluster_count(selected_cluster_counts, item) >= config.max_topic_cluster_items:
-            continue
-        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
-        if len(selected) >= limit:
-            break
+    _select_best_remaining(
+        items,
+        state,
+        config,
+        max_by_type=max_by_type,
+        enforce_source_caps=True,
+        enforce_topic_caps=True,
+    )
 
     # First relax topic caps to fill seats with the best remaining items while
     # still preserving source balance. Deep-dive scripts can still see cluster
     # size in metadata even when the daily selection uses one representative.
-    for item in items:
-        if len(selected) >= limit:
-            break
-        if item.id in selected_ids:
-            continue
-        type_limit = max_by_type.get(item.source_type)
-        if type_limit is not None and _source_type_count(selected, item.source_type) >= type_limit:
-            continue
-        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
+    _select_best_remaining(
+        items,
+        state,
+        config,
+        max_by_type=max_by_type,
+        enforce_source_caps=True,
+        enforce_topic_caps=False,
+    )
 
     # If source diversity caps leave empty seats, fill them with the best
     # remaining items only when there is no other source type to balance against.
     source_types = {item.source_type for item in items}
-    relax_caps = len(source_types) <= 1
-    for item in items:
-        if len(selected) >= limit:
-            break
-        type_limit = max_by_type.get(item.source_type)
-        if (
-            not relax_caps
-            and type_limit is not None
-            and _source_type_count(selected, item.source_type) >= type_limit
-        ):
-            continue
-        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
+    if len(source_types) <= 1:
+        _select_best_remaining(
+            items,
+            state,
+            config,
+            max_by_type=max_by_type,
+            enforce_source_caps=False,
+            enforce_topic_caps=False,
+        )
 
-    return sorted(selected, key=_sort_key, reverse=True)
+    return sorted(state.items, key=_sort_key, reverse=True)
+
+
+def _satisfy_minimum_source_types(
+    items: list[NewsItem], state: _SelectionState, config: RankerConfig
+) -> None:
+    for source_type, minimum in _minimum_source_type_counts(items, state.limit, config).items():
+        candidates = _items_of_type(items, source_type)
+        _select_until_source_minimum(candidates, state, config, source_type, minimum, True)
+        _select_until_source_minimum(candidates, state, config, source_type, minimum, False)
+
+
+def _select_until_source_minimum(
+    candidates: list[NewsItem],
+    state: _SelectionState,
+    config: RankerConfig,
+    source_type: str,
+    minimum: int,
+    enforce_topic_caps: bool,
+) -> None:
+    for item in candidates:
+        if state.source_count(source_type) >= minimum or not state.has_room:
+            break
+        if enforce_topic_caps and _topic_cap_reached(state, item, config):
+            continue
+        state.append(item)
+
+
+def _select_best_remaining(
+    items: list[NewsItem],
+    state: _SelectionState,
+    config: RankerConfig,
+    max_by_type: dict[str, int],
+    enforce_source_caps: bool,
+    enforce_topic_caps: bool,
+) -> None:
+    for item in items:
+        if not state.has_room:
+            break
+        if item.id in state.ids:
+            continue
+        if enforce_source_caps and _source_cap_reached(state, item, max_by_type):
+            continue
+        if enforce_topic_caps and _topic_cap_reached(state, item, config):
+            continue
+        state.append(item)
+
+
+def _source_cap_reached(
+    state: _SelectionState, item: NewsItem, max_by_type: dict[str, int]
+) -> bool:
+    type_limit = max_by_type.get(item.source_type)
+    return type_limit is not None and state.source_count(item.source_type) >= type_limit
+
+
+def _topic_cap_reached(state: _SelectionState, item: NewsItem, config: RankerConfig) -> bool:
+    return state.topic_cluster_count(item) >= config.max_topic_cluster_items
 
 
 def _minimum_source_type_counts(
@@ -177,32 +243,6 @@ def _maximum_source_type_counts(limit: int, config: RankerConfig) -> dict[str, i
 
 def _items_of_type(items: list[NewsItem], source_type: str) -> list[NewsItem]:
     return [item for item in items if item.source_type == source_type]
-
-
-def _source_type_count(items: list[NewsItem], source_type: str) -> int:
-    return sum(item.source_type == source_type for item in items)
-
-
-def _append_if_room(
-    selected: list[NewsItem],
-    selected_ids: set[str],
-    selected_cluster_counts: dict[str, int],
-    item: NewsItem,
-    limit: int,
-) -> None:
-    if len(selected) < limit and item.id not in selected_ids:
-        selected.append(item)
-        selected_ids.add(item.id)
-        cluster_id = _topic_cluster_id(item)
-        if cluster_id:
-            selected_cluster_counts[cluster_id] = selected_cluster_counts.get(cluster_id, 0) + 1
-
-
-def _topic_cluster_count(selected_cluster_counts: dict[str, int], item: NewsItem) -> int:
-    cluster_id = _topic_cluster_id(item)
-    if not cluster_id:
-        return 0
-    return selected_cluster_counts.get(cluster_id, 0)
 
 
 def _topic_cluster_id(item: NewsItem) -> str:
