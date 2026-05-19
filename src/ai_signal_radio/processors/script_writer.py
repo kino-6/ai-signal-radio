@@ -256,7 +256,10 @@ def source_bias_line(notes: list[WikiNote]) -> str:
     if count / len(notes) < 0.75:
         return ""
     label = source_type_label(source_type)
-    return f"今日は {label} 中心の回です。別ソースの取得状況は取得ログに残しています。"
+    return (
+        f"今日は {label} で見えている開発者向けトピックが中心です。"
+        "研究や公式発表の取得状況は、実行メタデータで確認できます。"
+    )
 
 
 def source_type_label(source_type: str) -> str:
@@ -303,13 +306,13 @@ def deep_dive_reason(note: WikiNote) -> str:
         reasons.append(f"関連投稿が {note.topic_cluster_size} 件あり、単発ではない動きに見える")
     source = source_type_label(note.source_type)
     if source:
-        reasons.append(f"{source} 発で開発者の反応を追いやすい")
+        reasons.append(f"{source} で実装者の反応を追いやすい")
     score_reasons = [
         humanize_score_reason(reason)
         for reason in note.score_reasons
         if reason and reason != "不明"
     ]
-    score_reasons = [reason for reason in score_reasons if reason]
+    score_reasons = _unique_nonempty(score_reasons)
     if score_reasons:
         reasons.append("、".join(score_reasons[:2]))
     elif note.score:
@@ -326,7 +329,7 @@ def daily_deep_dive_reason(note: WikiNote) -> str:
     if first_open_question(note):
         reasons.append("未確認の論点があります")
     if note.score >= 8:
-        reasons.append("今日の中でも優先度が高いです")
+        reasons.append("実装判断に直結しそうです")
     if not reasons:
         reasons.append("開発者目線で次に調べる価値があります")
     return "理由は、" + "。".join(reasons) + "。詳細は深掘り版で扱います。"
@@ -334,16 +337,28 @@ def daily_deep_dive_reason(note: WikiNote) -> str:
 
 def humanize_score_reason(reason: str) -> str:
     if reason.startswith("keyword_matches="):
-        return "AI関連キーワードの一致が多いこと"
+        return "AI開発の実装判断に関係しそうなこと"
     if reason.startswith("keyword_score="):
-        return "AI関連キーワードの重みが高いこと"
+        return "開発ツールやモデル運用の話題として試しやすいこと"
     if reason.startswith("hn_points_bonus="):
-        return "Hacker News で反応があること"
+        return "Hacker News で開発者の反応があること"
     if reason.startswith("official_source_bonus="):
-        return "公式ソース由来の加点があること"
+        return "公式発表に近く、一次情報を確認しやすいこと"
     if reason.startswith("research_bonus="):
-        return "研究ソース由来の加点があること"
+        return "研究動向として継続確認する価値があること"
     return reason
+
+
+def _unique_nonempty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique
 
 
 def representative_notes(notes: list[WikiNote]) -> list[WikiNote]:

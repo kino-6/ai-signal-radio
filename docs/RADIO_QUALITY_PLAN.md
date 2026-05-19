@@ -25,13 +25,23 @@
 
 ## Improvement Roadmap
 
+### Current Quality Sprint: Speech Editing
+
+- [x] P1: 固有名詞・英字略語を TTS 前に読みやすくする
+- [x] P1: 一言ニュースを 40-60 字目安の短文に分割する
+- [x] P1: deep dive の Markdown 見出しを発話文へ変換する
+- [x] P2: 深掘り候補の選定理由を、内部スコア語ではなく人間向けの判断理由にする
+- [x] P2: ソース偏りの説明を、取得状況も含めて自然にする
+- [x] P3: ローカル LLM による任意の speech editor pass を追加する
+- [x] P3: `best-current-run.sh` から speech editor pass を使えるようにする
+
 ### Priority Backlog: Speaking Quality
 
 - [x] P0: wiki 要約と番組用の言葉を分けるため、`spoken_title` / `one_line_takeaway` / `why_it_matters` / `listen_action` を持つ
 - [x] P1: Daily 冒頭に「今日はこれだけ覚える」を 1 文で入れる
 - [x] P1: Deep Dive を質問主導にし、Host が事実、Analyst が疑問と論点を挟む
 - [x] P2: score / source / cluster の理由を、内部語ではなく人間の判断理由に翻訳する
-- [ ] P2: TTS 用に 1 文 40-60 字を目安に分割し、括弧を減らす
+- [x] P2: TTS 用に 1 文 40-60 字を目安に分割し、括弧を減らす
 - [ ] P3: 締めの「今日の実装観点」をニュース内容から毎回少し変える
 - [ ] P3: 話速、間、イントネーション preset を用途別に docs 化する
 

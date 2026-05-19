@@ -5,6 +5,7 @@ from ai_signal_radio.tts.voicevox import (
     markdown_to_speech_segments,
     markdown_to_speech_text,
     normalize_for_tts,
+    normalize_speech_text,
     normalize_symbols_for_tts,
     parse_speech_segments,
     render_speech_segments,
@@ -25,13 +26,44 @@ LLM and AI update.
     text = markdown_to_speech_text(markdown)
 
     assert "# Daily" not in text
-    assert "Daily エーアイ Signal Radio" in text
+    assert "エーアイシグナルラジオです。" in text
     assert "hacker-news-ai" in text
     assert "アーカイブ" in text
     assert "オープンエーアイ" in text
     assert "エルエルエム and エーアイ update." in text
     assert "1. Topic" not in text
     assert "Topic" in text
+
+
+def test_markdown_to_speech_text_turns_section_headings_into_spoken_lines() -> None:
+    markdown = """## 一言ニュース
+
+- Neovimで実現したLLMチャットクライアント。Hacker News より。Neovimのファイルタイプとして、複数のLLMを統合したポータブルなチャットワークスペース『Flemma』が公開されました。
+
+## 事実
+
+本文です。
+"""
+
+    text = markdown_to_speech_text(markdown)
+
+    assert "ここからは一言ニュースです。" in text
+    assert "まず事実です。" in text
+    assert "ネオビム" in text
+    assert "フレマ" in text
+    assert all(len(line) <= 80 for line in text.splitlines())
+
+
+def test_normalize_speech_text_cleans_llm_editor_markdown() -> None:
+    text = normalize_speech_text(
+        "**CLI topic**\n---\nGitHub と Google Play を確認します。"
+    )
+
+    assert "**" not in text
+    assert "---" not in text
+    assert "シーエルアイ topic" in text
+    assert "ギットハブ" in text
+    assert "グーグルプレイ" in text
 
 
 def test_split_for_tts_chunks_long_text() -> None:
@@ -65,7 +97,7 @@ def test_apply_pronunciations_accepts_context_specific_pairs() -> None:
 
 def test_normalize_for_tts_applies_technical_defaults() -> None:
     text = normalize_for_tts(
-        "AI, LLM, API, SDK, Vercel AI SDK, LangGraph, AWS Bedrock, SQLite."
+        "AI, LLM, API, SDK, Vercel AI SDK, LangGraph, AWS Bedrock, SQLite, Axe, Unix, CLI, GitHub."
     )
 
     assert "エーアイ" in text
@@ -76,6 +108,10 @@ def test_normalize_for_tts_applies_technical_defaults() -> None:
     assert "ランググラフ" in text
     assert "エーダブリューエス ベッドロック" in text
     assert "エスキューライト" in text
+    assert "アックス" in text
+    assert "ユニックス" in text
+    assert "シーエルアイ" in text
+    assert "ギットハブ" in text
 
 
 def test_normalize_for_tts_lets_profile_override_defaults() -> None:
@@ -117,7 +153,7 @@ Analyst: API の制限を見ます。
     )
 
     assert segments == [
-        SpeechSegment(text="Deep Dive\nエーダブリューエス ベッドロック を確認します。", speaker=3),
+        SpeechSegment(text="ディープダイブです。\nエーダブリューエス ベッドロック を確認します。", speaker=3),
         SpeechSegment(text="エーピーアイ の制限を見ます。", speaker=8),
         SpeechSegment(text="地の文です。", speaker=3),
     ]

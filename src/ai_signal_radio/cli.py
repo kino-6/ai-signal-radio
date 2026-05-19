@@ -43,9 +43,11 @@ from ai_signal_radio.tts.voicevox import (
     load_pronunciation_profile,
     markdown_to_speech_segments,
     markdown_to_speech_text,
+    normalize_speech_text,
     parse_speech_segments,
     render_speech_segments,
 )
+from ai_signal_radio.tts.speech_editor import OllamaSpeechEditor
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
                 host_speaker=args.host_speaker,
                 analyst_speaker=args.analyst_speaker,
                 pronunciation_profile=args.pronunciation_profile,
+                speech_editor=args.speech_editor,
+                speech_editor_model=args.speech_editor_model,
+                speech_editor_url=args.speech_editor_url,
             )
         except RuntimeError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -260,6 +265,22 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional YAML profile for context-specific pronunciation replacements.",
+    )
+    tts_script.add_argument(
+        "--speech-editor",
+        choices=("none", "ollama"),
+        default="none",
+        help="Optionally rewrite TTS text with a local speech editor pass.",
+    )
+    tts_script.add_argument(
+        "--speech-editor-model",
+        default="gemma4:latest",
+        help="Ollama model for --speech-editor ollama.",
+    )
+    tts_script.add_argument(
+        "--speech-editor-url",
+        default="http://127.0.0.1:11434",
+        help="Ollama base URL for --speech-editor ollama.",
     )
 
     demo = subparsers.add_parser("demo", help="Run a fully local sample pipeline.")
@@ -401,6 +422,9 @@ def tts_script_command(
     host_speaker: int | None = None,
     analyst_speaker: int | None = None,
     pronunciation_profile: Path | None = None,
+    speech_editor: str = "none",
+    speech_editor_model: str = "gemma4:latest",
+    speech_editor_url: str = "http://127.0.0.1:11434",
 ) -> Path:
     config = load_config(config_path) if config_path.exists() else AppConfig()
     speaker = speaker if speaker is not None else config.tts.speaker
@@ -424,6 +448,12 @@ def tts_script_command(
         )
     else:
         speech_text = markdown_to_speech_text(markdown, pronunciations=pronunciations)
+
+    if speech_editor == "ollama":
+        editor = OllamaSpeechEditor(model=speech_editor_model, base_url=speech_editor_url)
+        speech_text = normalize_speech_text(editor.edit(speech_text), pronunciations=pronunciations)
+    elif speech_editor != "none":
+        raise RuntimeError(f"unsupported speech editor: {speech_editor}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(f"{speech_text.rstrip()}\n", encoding="utf-8")

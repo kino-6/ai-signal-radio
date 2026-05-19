@@ -130,10 +130,14 @@ class VoicevoxClient:
 
 PronunciationPairs = tuple[tuple[str, str], ...]
 DEFAULT_TECHNICAL_PRONUNCIATIONS: PronunciationPairs = (
+    ("AI Signal Radio", "エーアイシグナルラジオ"),
+    ("Daily", "デイリー"),
+    ("Deep Dive", "ディープダイブ"),
     ("Hacker News", "ハッカーニュース"),
     ("AWS Bedrock", "エーダブリューエス ベッドロック"),
     ("Vercel AI SDK", "バーセル エーアイ エスディーケー"),
     ("Hugging Face", "ハギングフェイス"),
+    ("Google Play", "グーグルプレイ"),
     ("LangGraph", "ランググラフ"),
     ("CI/CD", "シーアイ シーディー"),
     ("VOICEVOX", "ボイスボックス"),
@@ -142,12 +146,24 @@ DEFAULT_TECHNICAL_PRONUNCIATIONS: PronunciationPairs = (
     ("Anthropic", "アンソロピック"),
     ("Gemini", "ジェミニ"),
     ("Android", "アンドロイド"),
+    ("Neovim", "ネオビム"),
+    ("Flemma", "フレマ"),
+    ("Probus", "プロバス"),
+    ("Torrix", "トリックス"),
+    ("Sova AI", "ソーバ エーアイ"),
+    ("Sova", "ソーバ"),
+    ("Axe", "アックス"),
+    ("GitHub", "ギットハブ"),
+    ("Google", "グーグル"),
+    ("Unix", "ユニックス"),
     ("SQLite", "エスキューライト"),
     ("Postgres", "ポストグレス"),
     ("Redis", "レディス"),
     ("Ollama", "オラマ"),
     ("Claude", "クロード"),
     ("arXiv", "アーカイブ"),
+    ("CLI", "シーエルアイ"),
+    ("MB", "メガバイト"),
     ("LLM", "エルエルエム"),
     ("API", "エーピーアイ"),
     ("SDK", "エスディーケー"),
@@ -192,11 +208,7 @@ def markdown_to_speech_text(markdown: str, pronunciations: PronunciationPairs = 
             continue
         if in_frontmatter or not line:
             continue
-        line = re.sub(r"^#+\s*", "", line)
-        line = re.sub(r"^[-*]\s+", "", line)
-        line = re.sub(r"`([^`]+)`", r"\1", line)
-        line = normalize_symbols_for_tts(line)
-        lines.append(normalize_for_tts(line, pronunciations))
+        lines.extend(_speech_lines_from_markdown_line(line, pronunciations))
     return "\n".join(lines)
 
 
@@ -215,19 +227,17 @@ def markdown_to_speech_segments(
             continue
         if in_frontmatter or not line:
             continue
-        line = re.sub(r"^#+\s*", "", line)
-        line = re.sub(r"^[-*]\s+", "", line)
-        line = re.sub(r"`([^`]+)`", r"\1", line)
         speaker = default_speaker
         role_match = re.match(r"^(Host|Analyst):\s*(.+)$", line, flags=re.IGNORECASE)
         if role_match:
             role = role_match.group(1).lower()
             speaker = role_speakers.get(role, default_speaker)
             line = role_match.group(2)
-        line = normalize_symbols_for_tts(line)
-        text = normalize_for_tts(line, pronunciations)
-        if text:
-            segments.append(SpeechSegment(text=text, speaker=speaker))
+            speech_lines = _speech_lines_from_text(line, pronunciations)
+        else:
+            speech_lines = _speech_lines_from_markdown_line(line, pronunciations)
+        if speech_lines:
+            segments.append(SpeechSegment(text="\n".join(speech_lines), speaker=speaker))
     return _merge_adjacent_segments(segments)
 
 
@@ -240,6 +250,22 @@ def render_speech_segments(segments: list[SpeechSegment]) -> str:
         if segment.text.strip()
     ]
     return "\n\n".join(blocks).strip()
+
+
+def normalize_speech_text(text: str, pronunciations: PronunciationPairs = ()) -> str:
+    """Normalize already edited speech text while preserving speaker blocks."""
+
+    segments = parse_speech_segments(text)
+    if segments:
+        normalized_segments = [
+            SpeechSegment(
+                text=_plain_speech_text_from_text(segment.text, pronunciations),
+                speaker=segment.speaker,
+            )
+            for segment in segments
+        ]
+        return render_speech_segments(normalized_segments)
+    return _plain_speech_text_from_text(text, pronunciations)
 
 
 def parse_speech_segments(text: str) -> list[SpeechSegment]:
@@ -277,8 +303,16 @@ def normalize_symbols_for_tts(text: str) -> str:
     """Remove Markdown and punctuation noise before local TTS."""
 
     converted = html.unescape(text)
+    converted = re.sub(r"\*\*([^*]+)\*\*", r"\1", converted)
+    converted = re.sub(r"\*([^*]+)\*", r"\1", converted)
     converted = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", converted)
     converted = re.sub(r"https?://\S+", "リンク", converted)
+    converted = re.sub(
+        r"\$([0-9]+)k\b",
+        lambda match: f"{int(match.group(1)) * 1000}ドル",
+        converted,
+        flags=re.IGNORECASE,
+    )
     converted = re.sub(r"^\d+\.\s*", "", converted)
     converted = converted.replace("&", "アンド")
     converted = re.sub(r"\s*[:：]\s*", "、", converted)
@@ -309,6 +343,86 @@ def apply_pronunciations(text: str, pronunciations: PronunciationPairs = ()) -> 
     for term, reading in pronunciations:
         converted = converted.replace(term, reading)
     return converted
+
+
+def _speech_lines_from_markdown_line(
+    line: str, pronunciations: PronunciationPairs = ()
+) -> list[str]:
+    heading = re.match(r"^(#+)\s*(.+)$", line)
+    if heading:
+        level = len(heading.group(1))
+        text = _heading_to_speech(heading.group(2), level)
+    else:
+        text = re.sub(r"^[-*]\s+", "", line)
+    return _speech_lines_from_text(text, pronunciations)
+
+
+def _speech_lines_from_text(text: str, pronunciations: PronunciationPairs = ()) -> list[str]:
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = normalize_symbols_for_tts(text)
+    text = normalize_for_tts(text, pronunciations)
+    return _split_speech_line(text)
+
+
+def _plain_speech_text_from_text(text: str, pronunciations: PronunciationPairs = ()) -> str:
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or re.fullmatch(r"-{3,}", line):
+            continue
+        lines.extend(_speech_lines_from_markdown_line(line, pronunciations))
+    return "\n".join(lines)
+
+
+def _heading_to_speech(text: str, level: int) -> str:
+    normalized = re.sub(r"^\d+\.\s*", "", text.strip())
+    replacements = {
+        "Daily AI Signal Radio": "エーアイシグナルラジオです。",
+        "AI Signal Radio Deep Dive": "エーアイシグナルラジオ、深掘り版です。",
+        "一言ニュース": "ここからは一言ニュースです。",
+        "今日の深掘り候補": "今日の深掘り候補です。",
+        "事実": "まず事実です。",
+        "解釈": "次に意味合いです。",
+        "試す価値": "試すなら、ここを見ます。",
+        "未確認事項": "最後に、未確認の点です。",
+    }
+    if normalized in replacements:
+        return replacements[normalized]
+    if level == 1 and normalized:
+        return f"{normalized}です。"
+    return normalized
+
+
+def _split_speech_line(text: str, max_chars: int = 64) -> list[str]:
+    if not text:
+        return []
+    sentences = [unit.strip() for unit in re.split(r"(?<=[。！？])", text) if unit.strip()]
+    if not sentences:
+        sentences = [text]
+    lines: list[str] = []
+    for sentence in sentences:
+        lines.extend(_split_long_speech_unit(sentence, max_chars=max_chars))
+    return lines
+
+
+def _split_long_speech_unit(text: str, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+    parts = [part for part in re.split(r"(?<=、)", text) if part]
+    if len(parts) <= 1:
+        return [text]
+
+    lines: list[str] = []
+    current = ""
+    for part in parts:
+        if current and len(current) + len(part) > max_chars:
+            lines.append(current.rstrip("、"))
+            current = part
+        else:
+            current = f"{current}{part}"
+    if current:
+        lines.append(current.rstrip("、"))
+    return lines
 
 
 def _merge_adjacent_segments(segments: list[SpeechSegment]) -> list[SpeechSegment]:

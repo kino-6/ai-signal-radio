@@ -316,9 +316,9 @@ def test_briefing_mentions_when_source_mix_is_biased() -> None:
 
     script = render_script(notes, style="briefing")
 
-    assert "今日は Hacker News 中心の回です。" in script
-    assert "取得ログ" in script
-    assert "run metadata" not in script
+    assert "今日は Hacker News で見えている開発者向けトピックが中心です。" in script
+    assert "実行メタデータ" in script
+    assert "取得ログ" not in script
 
 
 def test_briefing_selects_deep_dive_candidate_by_score_and_cluster() -> None:
@@ -388,8 +388,9 @@ def test_dialogue_deep_dive_reason_uses_human_language() -> None:
     script = render_script([note], style="dialogue")
 
     assert "関連投稿が 3 件あり、単発ではない動きに見える" in script
-    assert "Hacker News 発で開発者の反応を追いやすい" in script
-    assert "AI関連キーワードの重みが高いこと" in script
+    assert "Hacker News で実装者の反応を追いやすい" in script
+    assert "開発ツールやモデル運用の話題として試しやすいこと" in script
+    assert "AI関連キーワードの重み" not in script
     assert "score breakdown" not in script
     assert "keyword_score" not in script
     assert "source type" not in script

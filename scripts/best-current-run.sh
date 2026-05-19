@@ -15,6 +15,7 @@ Environment variables:
   OLLAMA_MODEL=gemma4:latest
   OLLAMA_URL=http://127.0.0.1:11434
   PROJECT_VENV=.venv     Virtual environment to activate before running uv.
+  SPEECH_EDITOR=ollama   TTS speech editor: none or ollama.
   DEEP_DIVE=1          Generate deep-dive dialogue script and TTS text.
   DOCS=1               Generate MkDocs preview pages.
   VOICEVOX=1           Synthesize wav files when VOICEVOX is available.
@@ -32,6 +33,7 @@ Examples:
   bash scripts/best-current-run.sh
   PLAY_AUDIO=0 bash scripts/best-current-run.sh
   PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
+  SPEECH_EDITOR=none bash scripts/best-current-run.sh
   VOICEVOX=0 bash scripts/best-current-run.sh
   LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 USAGE
@@ -57,6 +59,7 @@ LIMIT="${LIMIT:-8}"
 SUMMARIZER="${SUMMARIZER:-ollama}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:latest}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
+SPEECH_EDITOR="${SPEECH_EDITOR:-ollama}"
 DEEP_DIVE="${DEEP_DIVE:-1}"
 DOCS="${DOCS:-1}"
 VOICEVOX="${VOICEVOX:-1}"
@@ -174,7 +177,10 @@ echo "==> Writing daily TTS script"
 uv run ai-signal tts-script \
   --input data/scripts/daily.md \
   --output data/scripts/daily.tts.txt \
-  --speaker "$SPEAKER"
+  --speaker "$SPEAKER" \
+  --speech-editor "$SPEECH_EDITOR" \
+  --speech-editor-model "$OLLAMA_MODEL" \
+  --speech-editor-url "$OLLAMA_URL"
 
 if run_voicevox_tts \
   "daily" \
@@ -198,7 +204,10 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
     --output data/scripts/deep-dive.tts.txt \
     --speaker "$SPEAKER" \
     --host-speaker "$HOST_SPEAKER" \
-    --analyst-speaker "$ANALYST_SPEAKER"
+    --analyst-speaker "$ANALYST_SPEAKER" \
+    --speech-editor "$SPEECH_EDITOR" \
+    --speech-editor-model "$OLLAMA_MODEL" \
+    --speech-editor-url "$OLLAMA_URL"
 
   if run_voicevox_tts \
     "deep-dive" \

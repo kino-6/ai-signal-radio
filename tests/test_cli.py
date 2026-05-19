@@ -131,7 +131,7 @@ def test_tts_script_command_writes_plain_speech_text(tmp_path) -> None:
     assert result == output_path
     text = output_path.read_text(encoding="utf-8")
     assert "# Daily" not in text
-    assert "Daily" in text
+    assert "デイリーです。" in text
     assert "エーアイ" in text
     assert "オープンエーアイ" in text
 
@@ -158,6 +158,39 @@ def test_tts_script_command_writes_dialogue_speaker_blocks(tmp_path) -> None:
     assert "[speaker=8]" in text
     assert "エーダブリューエス ベッドロック" in text
     assert "エーピーアイ" in text
+
+
+def test_tts_script_command_can_use_ollama_speech_editor(tmp_path, monkeypatch) -> None:
+    script_path = tmp_path / "daily.md"
+    output_path = tmp_path / "daily.tts.txt"
+    script_path.write_text("# Daily\n\nAI ニュースです。", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    class FakeSpeechEditor:
+        def __init__(self, model: str, base_url: str) -> None:
+            seen["model"] = model
+            seen["base_url"] = base_url
+
+        def edit(self, speech_text: str) -> str:
+            seen["speech_text"] = speech_text
+            return "**CLI と GitHub の編集済み本文です。**"
+
+    monkeypatch.setattr(cli, "OllamaSpeechEditor", FakeSpeechEditor)
+
+    result = cli.tts_script_command(
+        script_path,
+        output_path,
+        speech_editor="ollama",
+        speech_editor_model="gemma4:latest",
+        speech_editor_url="http://127.0.0.1:11434",
+    )
+
+    assert result == output_path
+    text = output_path.read_text(encoding="utf-8")
+    assert "シーエルアイ と ギットハブ の編集済み本文です。" in text
+    assert "**" not in text
+    assert seen["model"] == "gemma4:latest"
+    assert "エーアイ" in str(seen["speech_text"])
 
 
 def test_tts_command_reads_segmented_tts_script(tmp_path, monkeypatch) -> None:

@@ -27,7 +27,7 @@ uv sync
 
 ## Best Current Run
 
-いまのおすすめ実行方法は、Bash script にまとめています。実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本、TTS 用テキスト、deep dive 用台本、VOICEVOX 音声、MkDocs preview まで生成します。
+いまのおすすめ実行方法は、Bash script にまとめています。実ニュースを収集し、ローカル Ollama で wiki を作り、聞き流し向けの `briefing` 台本、TTS 用テキスト、deep dive 用台本、VOICEVOX 音声、MkDocs preview まで生成します。TTS 用テキストは、デフォルトでローカル Ollama の speech editor pass も通します。
 
 ```bash
 bash scripts/best-current-run.sh
@@ -41,6 +41,7 @@ VOICEVOX engine が起動している場合は、最後に `data/audio/daily.wav
 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 PLAY_AUDIO=0 bash scripts/best-current-run.sh
 PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
+SPEECH_EDITOR=none bash scripts/best-current-run.sh
 VOICEVOX=0 bash scripts/best-current-run.sh
 DEEP_DIVE=0 DOCS=0 bash scripts/best-current-run.sh
 ```
@@ -254,6 +255,16 @@ uv run ai-signal tts-script \
 uv run ai-signal tts \
   --input data/scripts/daily.tts.txt \
   --output data/audio/daily.wav
+```
+
+ローカル Ollama で、意味を変えずに発話しやすい文へ整える speech editor pass も使えます。
+
+```bash
+uv run ai-signal tts-script \
+  --input data/scripts/daily.md \
+  --output data/scripts/daily.tts.txt \
+  --speech-editor ollama \
+  --speech-editor-model gemma4:latest
 ```
 
 読み替えを試す場合は、任意の YAML profile を指定できます。
