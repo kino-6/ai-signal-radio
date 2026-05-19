@@ -2,6 +2,15 @@
 
 ai-signal-radio はローカル CLI とファイル保存だけで動くため、macOS なら `launchd`、Linux なら `cron` や systemd timer で日次実行できます。
 
+## 初回セットアップ
+
+初回または環境を作り直した直後は、先に setup を実行します。
+
+```bash
+cd /path/to/ai-signal-radio
+bash scripts/setup.sh --check-ollama --check-voicevox
+```
+
 ## macOS launchd
 
 `/Users/YOUR_NAME/Library/LaunchAgents/com.local.ai-signal-radio.plist` のようなファイルを作ります。
