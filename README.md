@@ -33,12 +33,14 @@ uv sync
 bash scripts/best-current-run.sh
 ```
 
-VOICEVOX engine が起動していない場合は、音声生成だけ警告を出してスキップし、Markdown と TTS 用テキストの生成は続行します。音声生成を明示的に止めたい場合は `VOICEVOX=0` を指定します。
+VOICEVOX engine が起動している場合は、最後に `data/audio/daily.wav` を自動再生します。VOICEVOX engine が起動していない場合は、音声生成だけ警告を出してスキップし、Markdown と TTS 用テキストの生成は続行します。音声生成を明示的に止めたい場合は `VOICEVOX=0`、再生だけ止めたい場合は `PLAY_AUDIO=0` を指定します。
 
 よく使う調整は環境変数で指定できます。
 
 ```bash
 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+PLAY_AUDIO=0 bash scripts/best-current-run.sh
+PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
 VOICEVOX=0 bash scripts/best-current-run.sh
 DEEP_DIVE=0 DOCS=0 bash scripts/best-current-run.sh
 ```
