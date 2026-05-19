@@ -89,7 +89,9 @@ def test_bundled_topic_profiles_are_loadable() -> None:
         for path in sorted((root / "config" / "topics").glob("*.yml"))
     }
 
-    assert set(profiles) >= {"ai", "security", "developer-tools"}
+    assert set(profiles) >= {"ai", "ai-process-improvement", "security", "developer-tools"}
+    assert profiles["ai-process-improvement"].audience == "業務改善担当者・開発リーダー"
+    assert "workflow" in profiles["ai-process-improvement"].score_keywords
     assert profiles["security"].default_tags == ("security",)
     assert "cve" in profiles["security"].score_keywords
     assert profiles["developer-tools"].program_title == "Developer Tools Signal Radio"
@@ -105,3 +107,15 @@ def test_bundled_security_source_example_is_loadable() -> None:
     ]
     assert config.sources[0].params["search_query"] == "cat:cs.CR OR cat:cs.SE"
     assert "CVE" in config.sources[1].params["query"]
+
+
+def test_bundled_ai_process_improvement_source_example_is_loadable() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(root / "config" / "sources.ai-process-improvement.example.yml")
+
+    assert [source.name for source in config.sources] == [
+        "arxiv-ai-process",
+        "hacker-news-ai-process",
+    ]
+    assert "workflow automation" in config.sources[0].params["search_query"]
+    assert config.sources[1].params["query"] == "AI automation"

@@ -1,0 +1,41 @@
+sources:
+  - name: arxiv-ai-process
+    type: arxiv
+    enabled: true
+    params:
+      search_query: "all:\"workflow automation\" OR all:\"process improvement\" OR all:\"business process\" OR all:\"developer productivity\" OR all:\"AI agents\""
+      max_results: 30
+      timeout_seconds: 15
+      rate_limit_seconds: 1.0
+      retry_count: 2
+      retry_backoff_seconds: 2.0
+
+  - name: hacker-news-ai-process
+    type: hackernews
+    enabled: true
+    params:
+      query: "AI automation"
+      limit: 40
+      timeout_seconds: 15
+      rate_limit_seconds: 0.5
+
+tts:
+  enabled: false
+  endpoint: "http://127.0.0.1:50021"
+  speaker: 3
+  speed_scale: 1.18
+  pitch_scale: 0.0
+  intonation_scale: 1.0
+  pronunciation_profile: null
+
+ranker:
+  keyword_bonus: 2.0
+  official_source_bonus: 4.0
+  research_bonus: 2.0
+  hn_points_divisor: 100.0
+  hn_points_cap: 3.0
+  max_topic_cluster_items: 1
+  min_source_types:
+    arxiv: 1
+  max_source_types:
+    hackernews: 3
