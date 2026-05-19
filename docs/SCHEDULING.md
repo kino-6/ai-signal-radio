@@ -11,6 +11,20 @@ cd /path/to/ai-signal-radio
 bash scripts/setup.sh --check-ollama --check-voicevox
 ```
 
+Ollama と VOICEVOX も含めて日次ラジオ向けに整える場合は、初回だけ次のように実行します。
+
+```bash
+cd /path/to/ai-signal-radio
+OLLAMA_MODEL=gemma4:latest bash scripts/setup.sh \
+  --start-ollama \
+  --pull-ollama-model \
+  --start-voicevox \
+  --check-ollama \
+  --check-voicevox
+```
+
+`uv` が入っていない環境では `bash scripts/setup.sh --install-uv` から始めます。
+
 ## macOS launchd
 
 `/Users/YOUR_NAME/Library/LaunchAgents/com.local.ai-signal-radio.plist` のようなファイルを作ります。
@@ -63,7 +77,7 @@ launchctl load ~/Library/LaunchAgents/com.local.ai-signal-radio.plist
 0 8 * * * cd /path/to/ai-signal-radio && uv run ai-signal run --config config/sources.yml --limit 8 >> /tmp/ai-signal-radio.log 2>&1
 ```
 
-VOICEVOX の音声生成も自動化する場合は、先に VOICEVOX engine が起動している必要があります。
+VOICEVOX の音声生成も自動化する場合は、先に VOICEVOX engine が起動している必要があります。手動運用なら `bash scripts/best-current-run.sh` が VOICEVOX 音声生成と自動再生までまとめて実行します。
 
 ## データ整理
 
