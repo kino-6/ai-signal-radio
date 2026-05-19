@@ -14,6 +14,7 @@ Environment variables:
   SUMMARIZER=ollama
   OLLAMA_MODEL=gemma4:latest
   OLLAMA_URL=http://127.0.0.1:11434
+  PROJECT_VENV=.venv     Virtual environment to activate before running uv.
   DEEP_DIVE=1          Generate deep-dive dialogue script and TTS text.
   DOCS=1               Generate MkDocs preview pages.
   VOICEVOX=1           Synthesize wav files when VOICEVOX is available.
@@ -37,6 +38,14 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 cd "$(dirname "$0")/.."
+
+PROJECT_VENV="${PROJECT_VENV:-.venv}"
+if [[ -f "$PROJECT_VENV/bin/activate" ]]; then
+  # shellcheck source=/dev/null
+  source "$PROJECT_VENV/bin/activate"
+else
+  echo "warning: project virtualenv not found: $PROJECT_VENV; continuing with uv run." >&2
+fi
 
 CONFIG="${CONFIG:-config/sources.live.example.yml}"
 LIMIT="${LIMIT:-8}"
