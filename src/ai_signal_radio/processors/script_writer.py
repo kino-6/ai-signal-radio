@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from ai_signal_radio.config import TopicProfile
 from ai_signal_radio.models import WikiNote
 from ai_signal_radio.processors.headline import spoken_headline
 
@@ -13,25 +14,38 @@ SUPPORTED_STYLES = {"short", "standard", "detailed", "briefing", "dialogue"}
 BRIEFING_MAIN_TOPIC_LIMIT = 2
 
 
-def write_script(notes: list[WikiNote], output_path: Path, style: ScriptStyle = "standard") -> Path:
+def write_script(
+    notes: list[WikiNote],
+    output_path: Path,
+    style: ScriptStyle = "standard",
+    topic_profile: TopicProfile | None = None,
+) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_script(notes, style=style), encoding="utf-8")
+    output_path.write_text(
+        render_script(notes, style=style, topic_profile=topic_profile),
+        encoding="utf-8",
+    )
     return output_path
 
 
-def render_script(notes: list[WikiNote], style: ScriptStyle = "standard") -> str:
+def render_script(
+    notes: list[WikiNote],
+    style: ScriptStyle = "standard",
+    topic_profile: TopicProfile | None = None,
+) -> str:
     if style not in SUPPORTED_STYLES:
         raise ValueError(f"Unsupported script style: {style}")
 
+    profile = topic_profile or TopicProfile()
     if style == "briefing":
-        return render_briefing_script(notes)
+        return render_briefing_script(notes, topic_profile=profile)
     if style == "dialogue":
-        return render_dialogue_script(notes)
+        return render_dialogue_script(notes, topic_profile=profile)
 
     lines = [
-        "# Daily AI Signal Radio",
+        f"# {profile.program_title}",
         "",
-        "こんにちは。今日のAIニュースです。",
+        f"こんにちは。{profile.briefing_intro}",
         "",
         f"今日の注目トピックは {len(notes)} 件です。",
         "",
@@ -42,7 +56,7 @@ def render_script(notes: list[WikiNote], style: ScriptStyle = "standard") -> str
             [
                 "今日はまだ紹介できるトピックがありません。",
                 "",
-                "それでは、今日もよい開発を。",
+                profile.closing_line,
                 "",
             ]
         )
@@ -65,16 +79,20 @@ def render_script(notes: list[WikiNote], style: ScriptStyle = "standard") -> str
             action = note.action_items[0] if note.action_items else "元情報を確認しましょう。"
             lines.extend([f"次のアクションは、{action}", ""])
 
-    lines.extend(["それでは、今日もよい開発を。", ""])
+    lines.extend([profile.closing_line, ""])
     return "\n".join(lines)
 
 
-def render_briefing_script(notes: list[WikiNote]) -> str:
+def render_briefing_script(
+    notes: list[WikiNote],
+    topic_profile: TopicProfile | None = None,
+) -> str:
+    profile = topic_profile or TopicProfile()
     display_notes = representative_notes(notes)
     lines = [
-        "# Daily AI Signal Radio",
+        f"# {profile.program_title}",
         "",
-        "こんにちは。今日のAIニュースです。",
+        f"こんにちは。{profile.briefing_intro}",
         "",
         f"今日の注目トピックは {len(display_notes)} 件です。",
         "",
@@ -85,7 +103,7 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
             [
                 "今日はまだ紹介できるトピックがありません。",
                 "",
-                "それでは、今日もよい開発を。",
+                profile.closing_line,
                 "",
             ]
         )
@@ -98,7 +116,7 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
     if focus_line:
         lines.extend([focus_line, ""])
 
-    bias_line = source_bias_line(display_notes)
+    bias_line = source_bias_line(display_notes, topic_profile=profile)
     if bias_line:
         lines.extend([bias_line, ""])
 
@@ -153,21 +171,25 @@ def render_briefing_script(notes: list[WikiNote]) -> str:
             ]
         )
 
-    lines.extend(["今日の実装観点は、気になった話題を読むだけで終わらせず、小さく試せる形に分解することです。", ""])
-    lines.extend(["それでは、今日もよい開発を。", ""])
+    lines.extend([profile.focus_action_line, ""])
+    lines.extend([profile.closing_line, ""])
     return "\n".join(lines)
 
 
-def render_dialogue_script(notes: list[WikiNote]) -> str:
+def render_dialogue_script(
+    notes: list[WikiNote],
+    topic_profile: TopicProfile | None = None,
+) -> str:
+    profile = topic_profile or TopicProfile()
     display_notes = representative_notes(notes)
     lines = [
-        "# AI Signal Radio Deep Dive",
+        f"# {profile.deep_dive_title}",
         "",
-        "こんにちは。AI Signal Radio の深掘りです。",
+        f"こんにちは。{profile.deep_dive_intro}",
         "",
     ]
     if not display_notes:
-        lines.extend(["今日は深掘りできるトピックがありません。", "", "それでは、今日もよい開発を。", ""])
+        lines.extend(["今日は深掘りできるトピックがありません。", "", profile.closing_line, ""])
         return "\n".join(lines)
 
     note = display_notes[0]
@@ -186,7 +208,7 @@ def render_dialogue_script(notes: list[WikiNote]) -> str:
             "",
             "## 解釈",
             "",
-            "Analyst: それは、AI開発者にとってなぜ重要なんでしょう？",
+            f"Analyst: それは、{profile.audience}にとってなぜ重要なんでしょう？",
             "",
             f"Host: {why_it_matters_answer(note)}",
             "",
@@ -220,7 +242,7 @@ def render_dialogue_script(notes: list[WikiNote]) -> str:
                 "",
             ]
         )
-    lines.extend(["この深掘りはここまでです。", "", "それでは、今日もよい開発を。", ""])
+    lines.extend(["この深掘りはここまでです。", "", profile.closing_line, ""])
     return "\n".join(lines)
 
 
@@ -246,7 +268,10 @@ def source_line(note: WikiNote) -> str:
     return _join_source_parts(f"{label} より。", suffix)
 
 
-def source_bias_line(notes: list[WikiNote]) -> str:
+def source_bias_line(
+    notes: list[WikiNote],
+    topic_profile: TopicProfile | None = None,
+) -> str:
     if len(notes) < 2:
         return ""
     counts: dict[str, int] = {}
@@ -256,10 +281,18 @@ def source_bias_line(notes: list[WikiNote]) -> str:
     if count / len(notes) < 0.75:
         return ""
     label = source_type_label(source_type)
+    profile = topic_profile or TopicProfile()
+    audience = _briefing_audience(profile)
     return (
-        f"今日は {label} で見えている開発者向けトピックが中心です。"
+        f"今日は {label} で見えている{audience}向けトピックが中心です。"
         "研究や公式発表の取得状況は、実行メタデータで確認できます。"
     )
+
+
+def _briefing_audience(profile: TopicProfile) -> str:
+    if profile.name == "ai" and profile.audience == "AI開発者":
+        return "開発者"
+    return profile.audience
 
 
 def source_type_label(source_type: str) -> str:

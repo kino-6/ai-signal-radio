@@ -14,7 +14,14 @@ from ai_signal_radio.collectors.arxiv import ArxivCollector
 from ai_signal_radio.collectors.base import BaseCollector, CollectionError, DemoCollector
 from ai_signal_radio.collectors.hackernews import HackerNewsCollector
 from ai_signal_radio.collectors.rss import RssCollector
-from ai_signal_radio.config import AppConfig, RankerConfig, SourceConfig, load_config
+from ai_signal_radio.config import (
+    AppConfig,
+    RankerConfig,
+    SourceConfig,
+    TopicProfile,
+    load_config,
+    load_topic_profile,
+)
 from ai_signal_radio.docs_preview import DocsPreviewResult, build_mkdocs_preview
 from ai_signal_radio.models import NewsItem, PipelineResult
 from ai_signal_radio.processors.dedupe import DedupeResult, dedupe_items, dedupe_items_with_report
@@ -72,13 +79,19 @@ def main(argv: list[str] | None = None) -> int:
             summarizer_name=args.summarizer,
             ollama_model=args.ollama_model,
             ollama_url=args.ollama_url,
+            topic_path=args.topic,
         )
         print(f"Wrote wiki notes: {len(paths)}")
         for path in paths:
             print(path)
         return 0
     if args.command == "script":
-        path = script_command(input_path=args.input, output_path=args.output, style=args.style)
+        path = script_command(
+            input_path=args.input,
+            output_path=args.output,
+            style=args.style,
+            topic_path=args.topic,
+        )
         print(f"Wrote script: {path}")
         return 0
     if args.command == "docs":
@@ -140,12 +153,14 @@ def main(argv: list[str] | None = None) -> int:
             config_path=args.config,
             data_dir=args.data_dir,
             limit=args.limit,
+            collect_limit=args.collect_limit,
             source_filter=tuple(args.source),
             dry_run=args.dry_run,
             summarizer_name=args.summarizer,
             ollama_model=args.ollama_model,
             ollama_url=args.ollama_url,
             script_style=args.script_style,
+            topic_path=args.topic,
         )
         _print_result(result)
         return 0
@@ -158,11 +173,12 @@ def main(argv: list[str] | None = None) -> int:
             ollama_model=args.ollama_model,
             ollama_url=args.ollama_url,
             script_style=args.script_style,
+            topic_path=args.topic,
         )
         _print_result(result)
         return 0
     if args.command == "demo":
-        result = demo_command(data_dir=args.data_dir, limit=args.limit)
+        result = demo_command(data_dir=args.data_dir, limit=args.limit, topic_path=args.topic)
         _print_result(result)
         return 0
 
@@ -196,11 +212,13 @@ def build_parser() -> argparse.ArgumentParser:
     wiki = subparsers.add_parser("wiki", help="Convert raw JSON items into Markdown wiki notes.")
     wiki.add_argument("--input", type=Path, required=True)
     wiki.add_argument("--output", type=Path, required=True)
+    wiki.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
     add_summarizer_args(wiki)
 
     script = subparsers.add_parser("script", help="Generate a radio-style Markdown script.")
     script.add_argument("--input", type=Path, required=True)
     script.add_argument("--output", type=Path, required=True)
+    script.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
     script.add_argument(
         "--style",
         choices=("short", "standard", "detailed", "briefing", "dialogue"),
@@ -289,11 +307,19 @@ def build_parser() -> argparse.ArgumentParser:
     demo = subparsers.add_parser("demo", help="Run a fully local sample pipeline.")
     demo.add_argument("--data-dir", type=Path, default=Path("data"))
     demo.add_argument("--limit", type=int, default=20)
+    demo.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
 
     run = subparsers.add_parser("run", help="Run collect, wiki, and script generation.")
     run.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
     run.add_argument("--data-dir", type=Path, default=Path("data"))
-    run.add_argument("--limit", type=int, default=20)
+    run.add_argument("--limit", type=int, default=20, help="Number of final items to select.")
+    run.add_argument(
+        "--collect-limit",
+        type=int,
+        default=None,
+        help="Number of items to collect per source before dedupe/ranking. Defaults to --limit.",
+    )
+    run.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
     run.add_argument(
         "--source",
         action="append",
@@ -320,6 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--input", type=Path, default=Path("data/raw/latest.json"))
     rebuild.add_argument("--data-dir", type=Path, default=Path("data"))
     rebuild.add_argument("--limit", type=int, default=20)
+    rebuild.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
     add_summarizer_args(rebuild)
     rebuild.add_argument(
         "--script-style",
@@ -361,7 +388,12 @@ def collect_command(
     items = collect_all(build_collectors(config.sources, source_filter=source_filter), limit=limit)
     if dry_run:
         dedupe_result = dedupe_items_with_report(items)
-        ranked = rank_items(dedupe_result.selected_items, limit=limit, config=config.ranker)
+        ranked = rank_items(
+            dedupe_result.selected_items,
+            limit=limit,
+            config=config.ranker,
+            topic_profile=config.topic,
+        )
         _print_preview(items, ranked)
         return None
     ensure_data_dirs(data_dir)
@@ -375,16 +407,18 @@ def wiki_command(
     summarizer_name: str = "placeholder",
     ollama_model: str = "gemma4:latest",
     ollama_url: str = "http://127.0.0.1:11434",
+    topic_path: Path | None = None,
 ) -> list[Path]:
     run_at = datetime.now(timezone.utc)
     run_id = timestamp_slug(run_at)
     items = load_raw_items(input_path)
+    topic_profile = _load_topic_profile(topic_path)
     ranked = (
         items
         if _looks_processed(items)
-        else rank_items(dedupe_items(items), limit=len(items) or 20)
+        else rank_items(dedupe_items(items), limit=len(items) or 20, topic_profile=topic_profile)
     )
-    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
+    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url, topic_profile)
     paths = write_wiki_notes(
         ranked,
         output_dir,
@@ -392,15 +426,21 @@ def wiki_command(
         clean_day=True,
         now=run_at,
         run_id=run_id,
+        topic_profile=topic_profile,
     )
     write_topic_pages([load_wiki_notes(path)[0] for path in paths], output_dir / "topics")
     return paths
 
 
-def script_command(input_path: Path, output_path: Path, style: str = "standard") -> Path:
+def script_command(
+    input_path: Path,
+    output_path: Path,
+    style: str = "standard",
+    topic_path: Path | None = None,
+) -> Path:
     notes = load_wiki_notes(input_path)
     notes = sorted(notes, key=lambda note: note.score, reverse=True)
-    return write_script(notes, output_path, style=style)
+    return write_script(notes, output_path, style=style, topic_profile=_load_topic_profile(topic_path))
 
 
 def docs_command(
@@ -557,6 +597,18 @@ def _load_pronunciations_or_raise(profile_path: Path | None) -> PronunciationPai
         raise RuntimeError(f"pronunciation profile を読み込めません: {profile_path}: {exc}") from exc
 
 
+def _resolve_topic_profile(config: AppConfig, topic_path: Path | None) -> TopicProfile:
+    if topic_path is not None:
+        return load_topic_profile(topic_path)
+    return config.topic
+
+
+def _load_topic_profile(topic_path: Path | None) -> TopicProfile:
+    if topic_path is None:
+        return TopicProfile()
+    return load_topic_profile(topic_path)
+
+
 def _role_speakers(host_speaker: int | None, analyst_speaker: int | None) -> dict[str, int]:
     return {
         role: speaker_id
@@ -572,23 +624,28 @@ def run_command(
     config_path: Path,
     data_dir: Path = Path("data"),
     limit: int = 20,
+    collect_limit: int | None = None,
     source_filter: tuple[str, ...] = (),
     dry_run: bool = False,
     summarizer_name: str = "placeholder",
     ollama_model: str = "gemma4:latest",
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
+    topic_path: Path | None = None,
 ) -> PipelineResult:
     run_at = datetime.now(timezone.utc)
     config = load_config(config_path) if config_path.exists() else AppConfig()
+    topic_profile = _resolve_topic_profile(config, topic_path)
+    collection_limit = collect_limit if collect_limit is not None else limit
     collected, collection_failures = collect_all_with_report(
         build_collectors(config.sources, source_filter=source_filter),
-        limit=limit,
+        limit=collection_limit,
     )
     dedupe_result, ranked, processed = _process_items(
         collected,
         limit=limit,
         ranker_config=config.ranker,
+        topic_profile=topic_profile,
     )
 
     if dry_run:
@@ -615,12 +672,15 @@ def run_command(
             collection_failures=collection_failures,
             run_id=run_id,
             run_at=run_at,
+            collect_limit=collection_limit,
+            selection_limit=limit,
+            topic_profile=topic_profile,
         ),
         data_dir,
         run_id,
         now=run_at,
     )
-    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
+    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url, topic_profile)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
         data_dir,
@@ -628,6 +688,7 @@ def run_command(
         run_at=run_at,
         summarizer=summarizer,
         script_style=script_style,
+        topic_profile=topic_profile,
     )
     return PipelineResult(
         collected_count=len(collected),
@@ -650,10 +711,16 @@ def rebuild_command(
     ollama_model: str = "gemma4:latest",
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
+    topic_path: Path | None = None,
 ) -> PipelineResult:
     run_at = datetime.now(timezone.utc)
     items = load_raw_items(input_path)
-    dedupe_result, ranked, processed = _process_items(items, limit=limit)
+    topic_profile = _load_topic_profile(topic_path)
+    dedupe_result, ranked, processed = _process_items(
+        items,
+        limit=limit,
+        topic_profile=topic_profile,
+    )
     ensure_data_dirs(data_dir)
     run_id = timestamp_slug(run_at)
     processed_path = save_processed_items(processed, data_dir, run_id=run_id, now=run_at)
@@ -665,12 +732,15 @@ def rebuild_command(
             collection_failures=[],
             run_id=run_id,
             run_at=run_at,
+            collect_limit=len(items),
+            selection_limit=limit,
+            topic_profile=topic_profile,
         ),
         data_dir,
         run_id,
         now=run_at,
     )
-    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url)
+    summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url, topic_profile)
     wiki_path, script_path = _write_pipeline_outputs(
         processed,
         data_dir,
@@ -678,6 +748,7 @@ def rebuild_command(
         run_at=run_at,
         summarizer=summarizer,
         script_style=script_style,
+        topic_profile=topic_profile,
     )
     return PipelineResult(
         collected_count=len(items),
@@ -692,11 +763,20 @@ def rebuild_command(
     )
 
 
-def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResult:
+def demo_command(
+    data_dir: Path = Path("data"),
+    limit: int = 20,
+    topic_path: Path | None = None,
+) -> PipelineResult:
     run_at = datetime.now(timezone.utc)
+    topic_profile = _load_topic_profile(topic_path)
     ensure_data_dirs(data_dir)
     collected = DemoCollector("demo").collect(limit=limit)
-    dedupe_result, ranked, processed = _process_items(collected, limit=limit)
+    dedupe_result, ranked, processed = _process_items(
+        collected,
+        limit=limit,
+        topic_profile=topic_profile,
+    )
     run_id = timestamp_slug(run_at)
     raw_path = save_raw_items(collected, data_dir, now=run_at, run_id=run_id)
     processed_path = save_processed_items(processed, data_dir, run_id=run_id, now=run_at)
@@ -708,6 +788,9 @@ def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResu
             collection_failures=[],
             run_id=run_id,
             run_at=run_at,
+            collect_limit=limit,
+            selection_limit=limit,
+            topic_profile=topic_profile,
         ),
         data_dir,
         run_id,
@@ -718,6 +801,7 @@ def demo_command(data_dir: Path = Path("data"), limit: int = 20) -> PipelineResu
         data_dir,
         run_id=run_id,
         run_at=run_at,
+        topic_profile=topic_profile,
     )
     return PipelineResult(
         collected_count=len(collected),
@@ -739,6 +823,7 @@ def _write_pipeline_outputs(
     run_at: datetime,
     summarizer: Summarizer | None = None,
     script_style: str = "standard",
+    topic_profile: TopicProfile | None = None,
 ) -> tuple[Path, Path]:
     wiki_paths = write_wiki_notes(
         items,
@@ -747,12 +832,14 @@ def _write_pipeline_outputs(
         summarizer=summarizer,
         clean_day=True,
         run_id=run_id,
+        topic_profile=topic_profile,
     )
     notes = [load_wiki_notes(path)[0] for path in wiki_paths]
     script_path = write_script(
         notes,
         data_dir / "scripts" / f"{date_slug(run_at)}-{run_id}-daily.md",
         style=script_style,
+        topic_profile=topic_profile,
     )
     write_topic_pages(notes, data_dir / "wiki" / "topics")
     shutil.copyfile(script_path, data_dir / "scripts" / "daily.md")
@@ -764,9 +851,15 @@ def _process_items(
     items: list[NewsItem],
     limit: int,
     ranker_config: RankerConfig | None = None,
+    topic_profile: TopicProfile | None = None,
 ) -> tuple[DedupeResult, list[NewsItem], list[NewsItem]]:
     dedupe_result = dedupe_items_with_report(items)
-    ranked = rank_items(dedupe_result.selected_items, limit=limit, config=ranker_config)
+    ranked = rank_items(
+        dedupe_result.selected_items,
+        limit=limit,
+        config=ranker_config,
+        topic_profile=topic_profile,
+    )
     processed = _with_dedupe_notes(ranked, dedupe_result)
     return dedupe_result, ranked, processed
 
@@ -854,12 +947,21 @@ def build_collectors(
     return collectors
 
 
-def build_summarizer(name: str, ollama_model: str, ollama_url: str):
+def build_summarizer(
+    name: str,
+    ollama_model: str,
+    ollama_url: str,
+    topic_profile: TopicProfile | None = None,
+):
     if name == "placeholder":
         return None
     if name == "ollama":
         print(f"Using local Ollama summarizer: {ollama_model} at {ollama_url}")
-        return OllamaSummarizer(model=ollama_model, base_url=ollama_url)
+        return OllamaSummarizer(
+            model=ollama_model,
+            base_url=ollama_url,
+            topic_profile=topic_profile,
+        )
     raise ValueError(f"Unsupported summarizer: {name}")
 
 
@@ -908,10 +1010,17 @@ def _run_metadata(
     collection_failures: list[dict[str, str]],
     run_id: str,
     run_at: datetime | None = None,
+    collect_limit: int | None = None,
+    selection_limit: int | None = None,
+    topic_profile: TopicProfile | None = None,
 ) -> dict[str, object]:
+    profile = topic_profile or TopicProfile()
     return {
         "run_id": run_id,
         "run_at": run_at.astimezone(timezone.utc).isoformat() if run_at else "",
+        "topic_profile": profile.name,
+        "collect_limit": collect_limit,
+        "selection_limit": selection_limit,
         "collection_failures": collection_failures,
         "source_coverage": {
             "collected": _source_coverage(collected),

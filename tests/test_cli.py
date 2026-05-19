@@ -304,6 +304,39 @@ def test_run_command_saves_processed_ranked_items(tmp_path) -> None:
     assert "topic_cluster" in processed[0].metadata
 
 
+def test_run_command_separates_collect_limit_from_selection_limit(tmp_path, monkeypatch) -> None:
+    seen: dict[str, object] = {}
+    published = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    items = [
+        NewsItem(
+            source="demo",
+            source_type="demo",
+            title=f"AI model item {index}",
+            url=f"https://example.com/{index}",
+            published_at=published,
+            tags=("ai",),
+        )
+        for index in range(5)
+    ]
+
+    def fake_collect_all_with_report(collectors, limit: int):
+        seen["collect_limit"] = limit
+        return items, []
+
+    monkeypatch.setattr(cli, "collect_all_with_report", fake_collect_all_with_report)
+
+    result = cli.run_command(
+        config_path=tmp_path / "missing.yml",
+        data_dir=tmp_path / "data",
+        collect_limit=5,
+        limit=2,
+    )
+
+    assert seen["collect_limit"] == 5
+    assert result.collected_count == 5
+    assert result.selected_count == 2
+
+
 def test_write_pipeline_outputs_uses_single_run_timestamp(tmp_path) -> None:
     run_at = datetime(2026, 5, 18, 1, 2, 3, tzinfo=timezone.utc)
     run_id = "20260518T010203000000Z"

@@ -7,6 +7,7 @@ from typing import Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from ai_signal_radio.config import TopicProfile
 from ai_signal_radio.models import NewsItem, WikiNote
 from ai_signal_radio.processors.wiki_note_builder import note_from_item
 
@@ -26,15 +27,17 @@ class OllamaSummarizer:
         base_url: str = "http://127.0.0.1:11434",
         timeout_seconds: int = 120,
         transport: Transport | None = None,
+        topic_profile: TopicProfile | None = None,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.transport = transport or _default_transport
+        self.topic_profile = topic_profile or TopicProfile()
 
     def __call__(self, item: NewsItem) -> WikiNote:
-        fallback = note_from_item(item)
-        prompt = _build_prompt(item)
+        fallback = note_from_item(item, topic_profile=self.topic_profile)
+        prompt = _build_prompt(item, self.topic_profile)
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -64,7 +67,7 @@ class OllamaSummarizer:
             source_type=item.source_type,
             published_at=item.published_at,
             collected_at=item.collected_at,
-            tags=item.tags or ("ai",),
+            tags=item.tags or self.topic_profile.default_tags,
             fact_summary=_text_field(generated.get("fact_summary"), fallback.fact_summary),
             interpretation=_text_field(generated.get("interpretation"), fallback.interpretation),
             action_items=_list_field(generated.get("action_items"), fallback.action_items),
@@ -103,14 +106,15 @@ def _default_transport(request: Request, timeout_seconds: int) -> bytes:
         return response.read()
 
 
-def _build_prompt(item: NewsItem) -> str:
-    return f"""あなたはAIニュースをLLM向けwikiに整理する編集者です。
+def _build_prompt(item: NewsItem, topic_profile: TopicProfile | None = None) -> str:
+    profile = topic_profile or TopicProfile()
+    return f"""あなたは「{profile.name}」分野のニュースをLLM向けwikiに整理する編集者です。
 入力された情報だけを根拠にし、不明点は推測で埋めないでください。
 日本語で、読み上げにも使いやすい短い文にしてください。
 
 Return only JSON with these keys:
 - fact_summary: 事実だけを1-2文で要約。根拠が不足する場合は「不明」と書く。
-- interpretation: AI開発者・研究者にとっての意味を1-2文で説明。
+- interpretation: {profile.audience}にとっての意味を1-2文で説明。
 - action_items: 次に確認する行動を2個、短い日本語配列で返す。
 - spoken_title: 耳で聞きやすい短い日本語見出し。
 - one_line_takeaway: ラジオで読む1文の要点。
@@ -118,6 +122,9 @@ Return only JSON with these keys:
 - listen_action: 聞いたあとに見るべきポイントを1文で説明。
 - source_coverage: この情報が単一ソースか、公式/研究/コミュニティ情報かを1文で説明。
 - open_questions: 追加確認すべき問いを1-2個、短い日本語配列で返す。
+
+Audience: {profile.audience}
+Interpretation lens: {profile.interpretation_lens}
 
 Title: {item.title}
 Source: {item.source}

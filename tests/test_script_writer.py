@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from ai_signal_radio.models import WikiNote
+from ai_signal_radio.config import TopicProfile
 from ai_signal_radio.processors.script_writer import render_script
 
 
@@ -26,6 +27,36 @@ def test_render_script_is_japanese_tts_friendly() -> None:
     assert "今日の注目トピックは 1 件です。" in script
     assert "取得元は example-rss です。" in script
     assert "それでは、今日もよい開発を。" in script
+
+
+def test_render_script_uses_topic_profile_program_text() -> None:
+    note = WikiNote(
+        title="CVE advisory",
+        source="CISA",
+        source_url="https://example.com",
+        source_type="rss",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        tags=("security",),
+        fact_summary="CISA が脆弱性情報を公開しました。",
+        interpretation="運用リスクの確認が必要です。",
+        action_items=("元情報を確認する",),
+    )
+    profile = TopicProfile(
+        name="security",
+        program_title="Security Signal Radio",
+        briefing_intro="今日のセキュリティニュースです。",
+        audience="セキュリティ担当者",
+        focus_action_line="今日の確認観点は、影響範囲を小さく切り分けることです。",
+        closing_line="それでは、今日も安全に運用しましょう。",
+    )
+
+    script = render_script([note], style="briefing", topic_profile=profile)
+
+    assert script.startswith("# Security Signal Radio")
+    assert "こんにちは。今日のセキュリティニュースです。" in script
+    assert "今日の確認観点は、影響範囲を小さく切り分けることです。" in script
+    assert "それでは、今日も安全に運用しましょう。" in script
 
 
 def test_render_script_supports_length_styles() -> None:

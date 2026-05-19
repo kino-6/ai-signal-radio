@@ -61,12 +61,15 @@ bash scripts/best-current-run.sh
 
 初回だけは、先に上の `setup.sh` で `OLLAMA_MODEL=gemma4:latest` の pull と VOICEVOX 起動確認まで済ませておくと、その後は `bash scripts/best-current-run.sh` だけで完了しやすくなります。
 
+デフォルトでは `config/topics/ai.yml` を使い、各ソースから広めに `COLLECT_LIMIT=40` 件まで集めてから、ラジオ用に `LIMIT=8` 件へ選抜します。話題を広く散らしたい daily では `COLLECT_LIMIT` を大きめにし、読み上げ件数だけ `LIMIT` で絞ります。
+
 VOICEVOX engine が起動している場合は、最後に `data/audio/daily.wav` を自動再生します。VOICEVOX engine が起動していない場合は、音声生成だけ警告を出してスキップし、Markdown と TTS 用テキストの生成は続行します。音声生成を明示的に止めたい場合は `VOICEVOX=0`、再生だけ止めたい場合は `PLAY_AUDIO=0` を指定します。
 
 よく使う調整は環境変数で指定できます。
 
 ```bash
-LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+COLLECT_LIMIT=60 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+TOPIC=config/topics/ai.yml bash scripts/best-current-run.sh
 PLAY_AUDIO=0 bash scripts/best-current-run.sh
 PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
 SPEECH_EDITOR=none bash scripts/best-current-run.sh
@@ -79,6 +82,8 @@ DEEP_DIVE=0 DOCS=0 bash scripts/best-current-run.sh
 ```bash
 uv run ai-signal run \
   --config config/sources.live.example.yml \
+  --topic config/topics/ai.yml \
+  --collect-limit 40 \
   --limit 8 \
   --script-style briefing \
   --summarizer ollama \
@@ -117,6 +122,8 @@ uv run ai-signal collect --config config/sources.yml --limit 20
 ```bash
 uv run ai-signal run \
   --config config/sources.live.example.yml \
+  --topic config/topics/ai.yml \
+  --collect-limit 40 \
   --limit 8 \
   --script-style briefing \
   --summarizer ollama \
@@ -140,6 +147,23 @@ ranker:
 ```
 
 `max_topic_cluster_items` は、同じ heuristic topic cluster から daily に入れる件数の上限です。通常は `1` にして話題を広く散らし、深掘りでは cluster metadata の `size` を使って関連投稿の多い話題を拾います。
+
+`--collect-limit` は各ソースから集める上限、`--limit` は最終的に wiki / radio に残す件数です。実運用では `--collect-limit 40 --limit 8` のように、候補を広く集めてから source diversity と topic diversity で絞る使い方を推奨します。
+
+## Topic Profile
+
+話題ごとの語彙、番組名、想定読者、スコアリング用キーワードは topic profile で切り替えられます。標準の AI 向け profile は `config/topics/ai.yml` です。
+
+```bash
+uv run ai-signal run \
+  --config config/sources.live.example.yml \
+  --topic config/topics/ai.yml \
+  --collect-limit 40 \
+  --limit 8 \
+  --script-style briefing
+```
+
+別分野へ広げる場合は `config/topics/ai.yml` をコピーし、`program_title`、`briefing_intro`、`audience`、`interpretation_lens`、`score_keywords`、`official_sources` を調整します。収集クエリは `config/sources*.yml` 側、読み方は `config/pronunciations*.yml` 側で管理します。
 
 各 source の `params` には `timeout_seconds` と `rate_limit_seconds` を指定できます。公開APIに連続アクセスしすぎないため、実ニュース用設定では小さな待機時間を入れています。
 

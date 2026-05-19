@@ -1,0 +1,30 @@
+name: ai
+program_title: "Daily AI Signal Radio"
+deep_dive_title: "AI Signal Radio Deep Dive"
+briefing_intro: "今日のAIニュースです。"
+deep_dive_intro: "AI Signal Radio の深掘りです。"
+audience: "AI開発者"
+interpretation_lens: "モデル、開発ツール、研究動向、ローカルAI運用"
+closing_line: "それでは、今日もよい開発を。"
+focus_action_line: "今日の実装観点は、気になった話題を読むだけで終わらせず、小さく試せる形に分解することです。"
+default_tags:
+  - ai
+action_items:
+  - "元情報を読み、具体的に何が変わったか確認する。"
+  - "このプロジェクトの監視リストを更新する必要があるか判断する。"
+score_keywords:
+  - model
+  - agent
+  - openai
+  - anthropic
+  - google
+  - hugging face
+  - ai
+  - llm
+official_sources:
+  - openai
+  - anthropic
+  - google
+  - hugging face
+  - microsoft
+  - meta

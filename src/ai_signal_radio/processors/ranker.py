@@ -5,22 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from ai_signal_radio.config import RankerConfig
+from ai_signal_radio.config import RankerConfig, TopicProfile
 from ai_signal_radio.models import NewsItem
 from ai_signal_radio.processors.topic_cluster import cluster_items
-
-KEYWORDS = (
-    "model",
-    "agent",
-    "openai",
-    "anthropic",
-    "google",
-    "hugging face",
-    "ai",
-    "llm",
-)
-
-OFFICIAL_SOURCES = ("openai", "anthropic", "google", "hugging face", "microsoft", "meta")
 
 
 @dataclass
@@ -57,30 +44,41 @@ def rank_items(
     items: list[NewsItem],
     limit: int = 10,
     config: RankerConfig | None = None,
+    topic_profile: TopicProfile | None = None,
 ) -> list[NewsItem]:
     ranker_config = config or RankerConfig()
-    scored = [_with_score_breakdown(item, ranker_config) for item in items]
-    ordered = cluster_items(sorted(scored, key=_sort_key, reverse=True))
+    profile = topic_profile or TopicProfile()
+    scored = [_with_score_breakdown(item, ranker_config, profile) for item in items]
+    ordered = cluster_items(sorted(scored, key=_sort_key, reverse=True), topic_profile=profile)
     return _select_with_source_diversity(ordered, limit, ranker_config)
 
 
-def score_item(item: NewsItem, config: RankerConfig | None = None) -> float:
+def score_item(
+    item: NewsItem,
+    config: RankerConfig | None = None,
+    topic_profile: TopicProfile | None = None,
+) -> float:
     """Transparent MVP heuristic; higher score means more likely to be notable."""
 
-    return float(score_breakdown(item, config=config)["total"])
+    return float(score_breakdown(item, config=config, topic_profile=topic_profile)["total"])
 
 
-def score_breakdown(item: NewsItem, config: RankerConfig | None = None) -> dict[str, Any]:
+def score_breakdown(
+    item: NewsItem,
+    config: RankerConfig | None = None,
+    topic_profile: TopicProfile | None = None,
+) -> dict[str, Any]:
     ranker_config = config or RankerConfig()
+    profile = topic_profile or TopicProfile()
     text = f"{item.title} {item.summary} {item.content} {' '.join(item.tags)}".lower()
 
-    matched_keywords = [keyword for keyword in KEYWORDS if keyword in text]
+    matched_keywords = [keyword for keyword in profile.score_keywords if keyword.lower() in text]
     keyword_score = ranker_config.keyword_bonus * len(matched_keywords)
 
     source_text = f"{item.source} {item.url}".lower()
     official_source_bonus = (
         ranker_config.official_source_bonus
-        if any(source in source_text for source in OFFICIAL_SOURCES)
+        if any(source.lower() in source_text for source in profile.official_sources)
         else 0.0
     )
 
@@ -101,12 +99,17 @@ def score_breakdown(item: NewsItem, config: RankerConfig | None = None) -> dict[
         "official_source_bonus": round(official_source_bonus, 2),
         "research_bonus": round(research_bonus, 2),
         "hn_points_bonus": round(hn_points_bonus, 2),
+        "topic_profile": profile.name,
         "total": total,
     }
 
 
-def _with_score_breakdown(item: NewsItem, config: RankerConfig) -> NewsItem:
-    breakdown = score_breakdown(item, config=config)
+def _with_score_breakdown(
+    item: NewsItem,
+    config: RankerConfig,
+    topic_profile: TopicProfile,
+) -> NewsItem:
+    breakdown = score_breakdown(item, config=config, topic_profile=topic_profile)
     metadata = dict(item.metadata)
     metadata["score_breakdown"] = breakdown
     return replace(item, score=float(breakdown["total"]), metadata=metadata)

@@ -10,6 +10,8 @@ Usage:
 
 Environment variables:
   CONFIG=config/sources.live.example.yml
+  TOPIC=config/topics/ai.yml
+  COLLECT_LIMIT=40
   LIMIT=8
   SUMMARIZER=ollama
   OLLAMA_MODEL=gemma4:latest
@@ -35,7 +37,7 @@ Examples:
   PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
   SPEECH_EDITOR=none bash scripts/best-current-run.sh
   VOICEVOX=0 bash scripts/best-current-run.sh
-  LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
+  COLLECT_LIMIT=60 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 USAGE
 }
 
@@ -55,6 +57,8 @@ else
 fi
 
 CONFIG="${CONFIG:-config/sources.live.example.yml}"
+TOPIC="${TOPIC:-config/topics/ai.yml}"
+COLLECT_LIMIT="${COLLECT_LIMIT:-40}"
 LIMIT="${LIMIT:-8}"
 SUMMARIZER="${SUMMARIZER:-ollama}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:latest}"
@@ -220,6 +224,8 @@ echo "==> Running daily AI news pipeline"
 run_cmd=(
   uv run ai-signal run
   --config "$CONFIG"
+  --topic "$TOPIC"
+  --collect-limit "$COLLECT_LIMIT"
   --limit "$LIMIT"
   --script-style briefing
   --summarizer "$SUMMARIZER"
@@ -252,6 +258,7 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
   uv run ai-signal script \
     --input data/wiki \
     --output data/scripts/deep-dive.md \
+    --topic "$TOPIC" \
     --style dialogue
 
   echo "==> Writing deep-dive TTS script"

@@ -9,6 +9,7 @@ from typing import Callable
 
 import yaml
 
+from ai_signal_radio.config import TopicProfile
 from ai_signal_radio.models import NewsItem, WikiNote
 from ai_signal_radio.processors.topic_pages import render_topic_page, slugify, write_topic_pages
 from ai_signal_radio.processors.wiki_note_builder import note_from_item
@@ -24,6 +25,7 @@ def write_wiki_notes(
     summarizer: Summarizer | None = None,
     clean_day: bool = False,
     run_id: str | None = None,
+    topic_profile: TopicProfile | None = None,
 ) -> list[Path]:
     """Write one Markdown wiki note per news item.
 
@@ -42,7 +44,7 @@ def write_wiki_notes(
 
     paths: list[Path] = []
     for index, item in enumerate(items, start=1):
-        note = summarizer(item) if summarizer else note_from_item(item)
+        note = summarizer(item) if summarizer else note_from_item(item, topic_profile=topic_profile)
         path = day_dir / f"{index:02d}-{slugify(note.title)}.md"
         path.write_text(render_wiki_note(note), encoding="utf-8")
         paths.append(path)

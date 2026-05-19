@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import re
 
+from ai_signal_radio.config import TopicProfile
 from ai_signal_radio.models import NewsItem, WikiNote
 from ai_signal_radio.processors.headline import radio_title, rewrite_known_headline, shorten_headline
 
 
-def note_from_item(item: NewsItem) -> WikiNote:
+def note_from_item(item: NewsItem, topic_profile: TopicProfile | None = None) -> WikiNote:
+    profile = topic_profile or TopicProfile()
     topic = item.title.rstrip(".")
     summary = item.summary or f"{item.source} が「{topic}」について報じています。"
     interpretation = (
         f"この項目は {item.source_type} 系の情報で、"
-        "モデル、開発ツール、研究動向、ローカルAI運用に影響する可能性があります。"
+        f"{profile.interpretation_lens}に影響する可能性があります。"
     )
     dedupe_note = (
         dedupe_notes(item)
@@ -34,16 +36,13 @@ def note_from_item(item: NewsItem) -> WikiNote:
         source_type=item.source_type,
         published_at=item.published_at,
         collected_at=item.collected_at,
-        tags=item.tags or ("ai",),
+        tags=item.tags or profile.default_tags,
         fact_summary=summary,
         interpretation=interpretation,
-        action_items=(
-            "元情報を読み、具体的に何が変わったか確認する。",
-            "このプロジェクトの監視リストを更新する必要があるか判断する。",
-        ),
+        action_items=profile.action_items,
         spoken_title=spoken_title_from_item(item),
         one_line_takeaway=one_line_takeaway_from_item(item, summary),
-        why_it_matters=why_it_matters_from_item(item, interpretation),
+        why_it_matters=why_it_matters_from_item(item, interpretation, profile),
         listen_action="次に見るポイントは、元情報で具体的な変更点を確認することです。",
         score_reasons=score_reasons,
         source_coverage=source_coverage,
@@ -70,12 +69,17 @@ def one_line_takeaway_from_item(item: NewsItem, summary: str) -> str:
     return f"{item.source} が「{spoken_title_from_item(item)}」について報じています。"
 
 
-def why_it_matters_from_item(item: NewsItem, interpretation: str) -> str:
+def why_it_matters_from_item(
+    item: NewsItem,
+    interpretation: str,
+    topic_profile: TopicProfile | None = None,
+) -> str:
+    profile = topic_profile or TopicProfile()
     if item.summary:
         return first_sentence(interpretation)
     return (
         f"{item.source_type} 系の情報として、"
-        "モデル、開発ツール、研究動向、ローカルAI運用への影響を確認する価値があります。"
+        f"{profile.interpretation_lens}への影響を確認する価値があります。"
     )
 
 

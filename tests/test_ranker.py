@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from ai_signal_radio.config import RankerConfig
+from ai_signal_radio.config import RankerConfig, TopicProfile
 from ai_signal_radio.models import NewsItem
 from ai_signal_radio.processors.ranker import rank_items, score_breakdown, score_item
 
@@ -63,6 +63,27 @@ def test_score_item_uses_configurable_weights() -> None:
     config = RankerConfig(keyword_bonus=1.0, official_source_bonus=10.0)
 
     assert score_item(item, config=config) >= 13.0
+
+
+def test_score_item_uses_topic_profile_keywords_and_sources() -> None:
+    item = NewsItem(
+        source="CISA",
+        source_type="rss",
+        title="CVE exploit advisory",
+        url="https://cisa.gov/example",
+        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    profile = TopicProfile(
+        name="security",
+        score_keywords=("cve", "exploit"),
+        official_sources=("cisa",),
+    )
+
+    breakdown = score_breakdown(item, topic_profile=profile)
+
+    assert breakdown["topic_profile"] == "security"
+    assert breakdown["keyword_matches"] == ["cve", "exploit"]
+    assert breakdown["official_source_bonus"] > 0
 
 
 def test_rank_items_keeps_source_diversity() -> None:

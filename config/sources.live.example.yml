@@ -4,7 +4,7 @@ sources:
     enabled: true
     params:
       search_query: "cat:cs.AI OR cat:cs.CL OR cat:cs.LG"
-      max_results: 10
+      max_results: 30
       timeout_seconds: 15
       rate_limit_seconds: 1.0
       retry_count: 2
