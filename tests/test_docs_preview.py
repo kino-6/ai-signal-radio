@@ -26,6 +26,14 @@ def test_build_mkdocs_preview_copies_latest_run_and_script(tmp_path) -> None:
     script_path = tmp_path / "data" / "scripts" / "daily.md"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("# Daily\n\n今日のAIニュースです。", encoding="utf-8")
+    audio_dir = tmp_path / "data" / "audio"
+    audio_dir.mkdir()
+    (audio_dir / "daily.wav").write_bytes(b"RIFF daily")
+    (audio_dir / "deep-dive.wav").write_bytes(b"RIFF deep")
+    (audio_dir / "latest-metadata.json").write_text(
+        '{"audio": {"daily": "data/audio/daily.wav"}}',
+        encoding="utf-8",
+    )
     processed_path = save_processed_items(
         [item],
         tmp_path / "data",
@@ -36,6 +44,7 @@ def test_build_mkdocs_preview_copies_latest_run_and_script(tmp_path) -> None:
     result = build_mkdocs_preview(
         wiki_dir=wiki_dir,
         script_path=script_path,
+        audio_dir=audio_dir,
         output_dir=tmp_path / "docs" / "generated",
         processed_path=processed_path,
     )
@@ -45,9 +54,13 @@ def test_build_mkdocs_preview_copies_latest_run_and_script(tmp_path) -> None:
     assert result.graph_path and result.graph_path.exists()
     assert result.copied_note_count == 1
     assert result.copied_topic_count == 1
+    assert result.copied_audio_count == 1
     assert "MkDocs AI Preview" in result.index_path.read_text(encoding="utf-8")
     assert "Open graph view" in result.index_path.read_text(encoding="utf-8")
+    assert "Daily audio" in result.index_path.read_text(encoding="utf-8")
+    assert "audio/daily.wav" in result.index_path.read_text(encoding="utf-8")
     assert "AI Signal Graph" in result.graph_path.read_text(encoding="utf-8")
+    assert "Daily Audio" in result.graph_path.read_text(encoding="utf-8")
     assert "<svg" in result.graph_path.read_text(encoding="utf-8")
     assert (
         tmp_path
@@ -58,6 +71,8 @@ def test_build_mkdocs_preview_copies_latest_run_and_script(tmp_path) -> None:
         / "20260102T030405000000Z"
         / "01-mkdocs-ai-preview.md"
     ).exists()
+    assert (tmp_path / "docs" / "generated" / "audio" / "daily.wav").exists()
+    assert not (tmp_path / "docs" / "generated" / "audio" / "deep-dive.wav").exists()
 
 
 def test_find_latest_wiki_run_prefers_latest_date_and_run(tmp_path) -> None:

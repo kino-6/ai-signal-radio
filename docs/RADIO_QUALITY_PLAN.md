@@ -111,7 +111,7 @@ Analyst: 開発者目線では、アクセシビリティ API に依存する設
 - [x] Host は事実、Analyst は解釈と問いを担当する
 - [x] 未確認の推測は「まだ確認が必要」と言う
 - [x] キャラクター性より、聞きやすさと理解を優先する
-- [ ] 1 セグメントは 45-90 秒を目安にする
+- [x] 1 セグメントは 45-90 秒を目安にする
 
 ## First Implementation Slice
 
@@ -127,6 +127,9 @@ Analyst: 開発者目線では、アクセシビリティ API に依存する設
 ## Later Questions
 
 - [x] Host / Analyst を VOICEVOX の別 speaker に割り当てるか
-- [ ] deep dive を daily 実行時に必ず作るか、手動コマンドにするか
-- [ ] Ollama model ごとに script 品質差を比較するか
-- [ ] audio metadata と MkDocs への音声リンクをどう扱うか
+- [x] deep dive を daily 実行時に必ず作るか、手動コマンドにするか
+  - `best-current-run.sh` では daily と deep dive を両方作る。不要な日は `DEEP_DIVE=0` で止める。
+- [x] Ollama model ごとに script 品質差を比較するか
+  - 自動ベンチではなく、`OLLAMA_MODEL=...` と `SPEECH_EDITOR=...` の env 切替で同じ入口から比較する。
+- [x] audio metadata と MkDocs への音声リンクをどう扱うか
+  - `data/audio/latest-metadata.json` を生成し、MkDocs preview に `daily.wav` / `deep-dive.wav` へのリンクを出す。

@@ -85,12 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         result = docs_command(
             wiki_dir=args.wiki,
             script_path=args.script,
+            audio_dir=args.audio_dir,
             output_dir=args.output,
             processed_path=args.processed,
         )
         print(f"Wrote MkDocs preview: {result.index_path}")
         print(f"Copied wiki notes: {result.copied_note_count}")
         print(f"Copied topic pages: {result.copied_topic_count}")
+        print(f"Copied audio files: {result.copied_audio_count}")
         if result.radio_path:
             print(f"Copied radio script: {result.radio_path}")
         return 0
@@ -209,6 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
     docs = subparsers.add_parser("docs", help="Generate ignored MkDocs preview pages.")
     docs.add_argument("--wiki", type=Path, default=Path("data/wiki"))
     docs.add_argument("--script", type=Path, default=Path("data/scripts/daily.md"))
+    docs.add_argument("--audio-dir", type=Path, default=Path("data/audio"))
     docs.add_argument("--processed", type=Path, default=Path("data/processed/latest.json"))
     docs.add_argument("--output", type=Path, default=Path("docs/generated"))
 
@@ -403,12 +406,14 @@ def script_command(input_path: Path, output_path: Path, style: str = "standard")
 def docs_command(
     wiki_dir: Path = Path("data/wiki"),
     script_path: Path = Path("data/scripts/daily.md"),
+    audio_dir: Path = Path("data/audio"),
     output_dir: Path = Path("docs/generated"),
     processed_path: Path | None = Path("data/processed/latest.json"),
 ) -> DocsPreviewResult:
     return build_mkdocs_preview(
         wiki_dir=wiki_dir,
         script_path=script_path,
+        audio_dir=audio_dir,
         output_dir=output_dir,
         processed_path=processed_path,
     )

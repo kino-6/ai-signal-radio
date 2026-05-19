@@ -305,7 +305,7 @@ GitHub Actions でも push / pull request 時に pytest だけを実行します
 
 ## MkDocs Preview
 
-生成済みの wiki / script をブラウザで読むために、MkDocs 用のローカルプレビューを作れます。
+生成済みの wiki / script をブラウザで読むために、MkDocs 用のローカルプレビューを作れます。`data/audio/daily.wav` や `data/audio/deep-dive.wav` がある場合は、プレビューにも音声リンクをコピーします。
 
 ```bash
 uv run ai-signal demo
@@ -313,7 +313,7 @@ uv run ai-signal docs
 uv run mkdocs serve
 ```
 
-`ai-signal docs` は `data/wiki`、`data/scripts/daily.md`、`data/processed/latest.json` から `docs/generated/` を作ります。`docs/generated/` と `site/` は git 管理しません。
+`ai-signal docs` は `data/wiki`、`data/scripts/daily.md`、`data/audio`、`data/processed/latest.json` から `docs/generated/` を作ります。`docs/generated/` と `site/` は git 管理しません。
 
 静的ビルドを確認する場合:
 

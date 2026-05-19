@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
 from html import escape
@@ -18,6 +19,7 @@ class DocsPreviewResult:
     index_path: Path
     copied_note_count: int
     copied_topic_count: int
+    copied_audio_count: int
     radio_path: Path | None
     graph_path: Path | None = None
 
@@ -25,6 +27,7 @@ class DocsPreviewResult:
 def build_mkdocs_preview(
     wiki_dir: Path = Path("data/wiki"),
     script_path: Path = Path("data/scripts/daily.md"),
+    audio_dir: Path = Path("data/audio"),
     output_dir: Path = Path("docs/generated"),
     processed_path: Path | None = Path("data/processed/latest.json"),
 ) -> DocsPreviewResult:
@@ -54,6 +57,8 @@ def build_mkdocs_preview(
         radio_path = output_dir / "radio.md"
         shutil.copyfile(script_path, radio_path)
 
+    audio_paths = _copy_audio_files(audio_dir, output_dir / "audio")
+
     processed_items = _load_processed_items(processed_path)
     graph_path = output_dir / "graph.md"
     graph_path.write_text(
@@ -62,6 +67,7 @@ def build_mkdocs_preview(
             note_paths=copied_notes,
             topic_paths=copied_topics,
             radio_path=radio_path,
+            audio_paths=audio_paths,
             output_dir=output_dir,
         ),
         encoding="utf-8",
@@ -73,6 +79,7 @@ def build_mkdocs_preview(
             note_paths=copied_notes,
             topic_paths=copied_topics,
             radio_path=radio_path,
+            audio_paths=audio_paths,
             processed_items=processed_items,
             latest_run_dir=latest_run_dir,
             output_dir=output_dir,
@@ -85,6 +92,7 @@ def build_mkdocs_preview(
         index_path=index_path,
         copied_note_count=len(copied_notes),
         copied_topic_count=len(copied_topics),
+        copied_audio_count=len(audio_paths),
         radio_path=radio_path,
         graph_path=graph_path,
     )
@@ -95,6 +103,7 @@ def render_preview_index(
     note_paths: list[Path],
     topic_paths: list[Path],
     radio_path: Path | None,
+    audio_paths: list[Path],
     processed_items: list[NewsItem],
     latest_run_dir: Path | None,
     output_dir: Path,
@@ -126,6 +135,16 @@ def render_preview_index(
         relative_radio = radio_path.relative_to(output_dir).as_posix()
         lines.extend(["## Radio Script", "", f"- [Daily script]({relative_radio})", ""])
 
+    lines.extend(["## Audio", ""])
+    if audio_paths:
+        for path in audio_paths:
+            relative = path.relative_to(output_dir).as_posix()
+            label = _audio_label(path)
+            lines.append(f"- [{label}]({relative})")
+        lines.append("")
+    else:
+        lines.extend(["まだ audio file がありません。", ""])
+
     lines.extend(["## Topics", ""])
     if topic_paths:
         for path in topic_paths:
@@ -149,6 +168,7 @@ def render_graph_page(
     note_paths: list[Path],
     topic_paths: list[Path],
     radio_path: Path | None,
+    audio_paths: list[Path],
     output_dir: Path,
 ) -> str:
     return "\n".join(
@@ -162,6 +182,7 @@ def render_graph_page(
                 note_paths=note_paths,
                 topic_paths=topic_paths,
                 radio_path=radio_path,
+                audio_paths=audio_paths,
                 output_dir=output_dir,
             ),
             "",
@@ -174,6 +195,7 @@ def render_signal_graph(
     note_paths: list[Path],
     topic_paths: list[Path],
     radio_path: Path | None,
+    audio_paths: list[Path],
     output_dir: Path,
 ) -> str:
     width = 1100
@@ -193,6 +215,8 @@ def render_signal_graph(
         for path in note_paths
     ]
     radio_link = radio_path.relative_to(output_dir).as_posix() if radio_path else None
+    primary_audio = _primary_audio_path(audio_paths)
+    audio_link = primary_audio.relative_to(output_dir).as_posix() if primary_audio else None
 
     topic_index = {tag: index for index, tag in enumerate(topic_tags)}
 
@@ -261,6 +285,8 @@ def render_signal_graph(
         )
 
     lines.append(_graph_heading("Output", 840, 48))
+    if audio_link:
+        lines.append(_edge(935, radio_y + 34, 935, radio_y + 115, css_class="faint"))
     lines.append(
         _node(
             x=830,
@@ -273,6 +299,19 @@ def render_signal_graph(
             href=radio_link,
         )
     )
+    if audio_link:
+        lines.append(
+            _node(
+                x=830,
+                y=radio_y + 115,
+                width=210,
+                height=68,
+                title="Daily Audio",
+                subtitle="VOICEVOX wav",
+                css_class="radio",
+                href=audio_link,
+            )
+        )
     lines.extend(["</svg>", "</div>"])
     return "\n".join(lines)
 
@@ -308,6 +347,56 @@ def _copy_markdown_files(source_dir: Path, destination_dir: Path) -> list[Path]:
         shutil.copyfile(source, destination)
         paths.append(destination)
     return paths
+
+
+def _copy_audio_files(source_dir: Path, destination_dir: Path) -> list[Path]:
+    if not source_dir.exists():
+        return []
+    names = _latest_audio_names(source_dir)
+    paths: list[Path] = []
+    for name in names:
+        source = source_dir / name
+        if not source.exists():
+            continue
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / name
+        shutil.copyfile(source, destination)
+        paths.append(destination)
+    return paths
+
+
+def _latest_audio_names(source_dir: Path) -> tuple[str, ...]:
+    metadata_path = source_dir / "latest-metadata.json"
+    if not metadata_path.exists():
+        return ("daily.wav", "deep-dive.wav")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ("daily.wav", "deep-dive.wav")
+    audio = metadata.get("audio")
+    if not isinstance(audio, dict):
+        return ()
+    names: list[str] = []
+    for value in audio.values():
+        path = Path(str(value))
+        if path.name:
+            names.append(path.name)
+    return tuple(names)
+
+
+def _audio_label(path: Path) -> str:
+    if path.name == "daily.wav":
+        return "Daily audio"
+    if path.name == "deep-dive.wav":
+        return "Deep dive audio"
+    return path.name
+
+
+def _primary_audio_path(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.name == "daily.wav":
+            return path
+    return paths[0] if paths else None
 
 
 def _load_processed_items(path: Path | None) -> list[NewsItem]:

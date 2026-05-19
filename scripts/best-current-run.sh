@@ -121,6 +121,62 @@ print_outputs() {
   fi
 }
 
+write_audio_metadata() {
+  if [[ "$DAILY_AUDIO_WRITTEN" != "1" && "$DEEP_AUDIO_WRITTEN" != "1" ]]; then
+    return 0
+  fi
+
+  echo "==> Writing audio metadata"
+  python - \
+    "$DAILY_AUDIO_WRITTEN" \
+    "$DEEP_AUDIO_WRITTEN" \
+    "$VOICEVOX" \
+    "$SPEAKER" \
+    "$HOST_SPEAKER" \
+    "$ANALYST_SPEAKER" \
+    "$SPEED" \
+    "$PITCH" \
+    "$INTONATION" \
+    "$SPEECH_EDITOR" \
+    "$OLLAMA_MODEL" \
+    "$OLLAMA_URL" <<'PY'
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import sys
+
+daily_written, deep_written, voicevox = sys.argv[1:4]
+speaker, host_speaker, analyst_speaker = sys.argv[4:7]
+speed, pitch, intonation = sys.argv[7:10]
+speech_editor, ollama_model, ollama_url = sys.argv[10:13]
+
+metadata = {
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "voicevox_enabled": voicevox == "1",
+    "speech_editor": speech_editor,
+    "ollama_model": ollama_model,
+    "ollama_url": ollama_url,
+    "speaker": int(speaker),
+    "host_speaker": int(host_speaker),
+    "analyst_speaker": int(analyst_speaker),
+    "speed": float(speed),
+    "pitch": float(pitch),
+    "intonation": float(intonation),
+    "audio": {},
+}
+if daily_written == "1":
+    metadata["audio"]["daily"] = "data/audio/daily.wav"
+if deep_written == "1":
+    metadata["audio"]["deep_dive"] = "data/audio/deep-dive.wav"
+
+path = Path("data/audio/latest-metadata.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
 play_audio() {
   local target_path=""
 
@@ -217,6 +273,8 @@ if [[ "$DEEP_DIVE" == "1" ]]; then
     DEEP_AUDIO_WRITTEN="1"
   fi
 fi
+
+write_audio_metadata
 
 if [[ "$DOCS" == "1" ]]; then
   echo "==> Generating MkDocs preview pages"
