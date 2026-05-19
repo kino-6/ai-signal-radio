@@ -70,6 +70,7 @@ VOICEVOX engine が起動している場合は、最後に `data/audio/daily.wav
 ```bash
 COLLECT_LIMIT=60 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 TOPIC=config/topics/ai.yml bash scripts/best-current-run.sh
+CONFIG=config/sources.security.example.yml TOPIC=config/topics/security.yml bash scripts/best-current-run.sh
 PLAY_AUDIO=0 bash scripts/best-current-run.sh
 PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
 SPEECH_EDITOR=none bash scripts/best-current-run.sh
@@ -154,6 +155,8 @@ ranker:
 
 話題ごとの語彙、番組名、想定読者、スコアリング用キーワードは topic profile で切り替えられます。標準の AI 向け profile は `config/topics/ai.yml` です。
 
+まず AI で実ニュースを聞く場合:
+
 ```bash
 uv run ai-signal run \
   --config config/sources.live.example.yml \
@@ -163,7 +166,49 @@ uv run ai-signal run \
   --script-style briefing
 ```
 
-別分野へ広げる場合は `config/topics/ai.yml` をコピーし、`program_title`、`briefing_intro`、`audience`、`interpretation_lens`、`score_keywords`、`official_sources` を調整します。収集クエリは `config/sources*.yml` 側、読み方は `config/pronunciations*.yml` 側で管理します。
+別トピックのサンプル:
+
+- `config/topics/ai.yml`: AI / LLM / agent / model 向け
+- `config/topics/security.yml`: 脆弱性、CVE、パッチ、運用リスク向け
+- `config/topics/developer-tools.yml`: CLI、SDK、IDE、CI/CD、開発ワークフロー向け
+
+Topic profile は「どう選び、どう話すか」を変えます。実際に何を集めるかは sources config が決めます。別分野に切り替えるときは `--topic` と `--config` をセットで変えるのが基本です。
+
+セキュリティ向けサンプルを試す場合:
+
+```bash
+uv run ai-signal run \
+  --config config/sources.security.example.yml \
+  --topic config/topics/security.yml \
+  --collect-limit 40 \
+  --limit 8 \
+  --script-style briefing
+```
+
+`best-current-run.sh` で音声までまとめる場合:
+
+```bash
+CONFIG=config/sources.security.example.yml \
+TOPIC=config/topics/security.yml \
+bash scripts/best-current-run.sh
+```
+
+自分用 topic を作る場合:
+
+```bash
+cp config/topics/ai.yml config/topics/my-topic.yml
+```
+
+主に調整する項目:
+
+- `program_title`: 台本のタイトル
+- `briefing_intro`: 冒頭の挨拶
+- `audience`: 誰にとって重要か
+- `interpretation_lens`: wiki と解釈文で見る観点
+- `score_keywords`: スコアリングで拾いたい語彙
+- `official_sources`: 公式発表として重く見る source やドメイン
+
+収集クエリは `config/sources*.yml` 側、読み方は `config/pronunciations*.yml` 側で管理します。
 
 各 source の `params` には `timeout_seconds` と `rate_limit_seconds` を指定できます。公開APIに連続アクセスしすぎないため、実ニュース用設定では小さな待機時間を入れています。
 
@@ -219,7 +264,13 @@ topic clustering は、product term と keyword overlap を使った軽量な決
 ```text
 config/
   sources.example.yml
+  sources.live.example.yml
+  sources.security.example.yml
   pronunciations.example.yml
+  topics/
+    ai.yml
+    security.yml
+    developer-tools.yml
 data/
   raw/
     YYYYMMDDTHHMMSSffffffZ-items.json

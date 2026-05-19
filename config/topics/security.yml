@@ -1,0 +1,41 @@
+name: security
+program_title: "Security Signal Radio"
+deep_dive_title: "Security Signal Deep Dive"
+briefing_intro: "今日のセキュリティニュースです。"
+deep_dive_intro: "Security Signal の深掘りです。"
+audience: "セキュリティ担当者"
+interpretation_lens: "脆弱性対応、検知、サプライチェーン、運用リスク"
+closing_line: "それでは、今日も安全に運用しましょう。"
+focus_action_line: "今日の確認観点は、影響範囲を小さく切り分け、対応優先度を決めることです。"
+default_tags:
+  - security
+action_items:
+  - "元情報を読み、影響する製品やバージョンを確認する。"
+  - "自分の環境で検知、緩和、更新が必要か判断する。"
+score_keywords:
+  - cve
+  - vulnerability
+  - exploit
+  - patch
+  - breach
+  - ransomware
+  - supply chain
+  - zero-day
+official_sources:
+  - cisa
+  - cert
+  - nist
+  - github
+  - microsoft
+  - google
+  - cloudflare
+cluster_common_words:
+  - vulnerability
+  - vulnerabilities
+  - security
+  - advisory
+  - update
+cluster_product_stopwords:
+  - CVE
+  - CERT
+  - NIST

@@ -1,0 +1,46 @@
+name: developer-tools
+program_title: "Developer Tools Signal Radio"
+deep_dive_title: "Developer Tools Signal Deep Dive"
+briefing_intro: "今日の開発ツールニュースです。"
+deep_dive_intro: "Developer Tools Signal の深掘りです。"
+audience: "開発者"
+interpretation_lens: "開発体験、CI/CD、CLI、エディタ、運用自動化"
+closing_line: "それでは、今日もよい開発を。"
+focus_action_line: "今日の確認観点は、便利そうな変更を小さく試し、既存ワークフローに合うか見極めることです。"
+default_tags:
+  - developer-tools
+action_items:
+  - "元情報を読み、導入条件や制限を確認する。"
+  - "既存の開発フローに小さく試せる箇所があるか判断する。"
+score_keywords:
+  - cli
+  - sdk
+  - ide
+  - editor
+  - github
+  - ci
+  - cd
+  - terminal
+  - developer
+  - workflow
+official_sources:
+  - github
+  - gitlab
+  - jetbrains
+  - microsoft
+  - vercel
+  - cloudflare
+  - docker
+cluster_common_words:
+  - developer
+  - developers
+  - tool
+  - tools
+  - workflow
+  - release
+cluster_product_stopwords:
+  - CLI
+  - SDK
+  - IDE
+  - CI
+  - CD

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from ai_signal_radio.config import load_config, load_topic_profile
 
 
@@ -78,3 +80,28 @@ official_sources:
     assert profile.default_tags == ("security",)
     assert profile.score_keywords == ("cve", "exploit")
     assert profile.official_sources == ("cisa",)
+
+
+def test_bundled_topic_profiles_are_loadable() -> None:
+    root = Path(__file__).resolve().parents[1]
+    profiles = {
+        path.stem: load_topic_profile(path)
+        for path in sorted((root / "config" / "topics").glob("*.yml"))
+    }
+
+    assert set(profiles) >= {"ai", "security", "developer-tools"}
+    assert profiles["security"].default_tags == ("security",)
+    assert "cve" in profiles["security"].score_keywords
+    assert profiles["developer-tools"].program_title == "Developer Tools Signal Radio"
+
+
+def test_bundled_security_source_example_is_loadable() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(root / "config" / "sources.security.example.yml")
+
+    assert [source.name for source in config.sources] == [
+        "arxiv-security",
+        "hacker-news-security",
+    ]
+    assert config.sources[0].params["search_query"] == "cat:cs.CR OR cat:cs.SE"
+    assert "CVE" in config.sources[1].params["query"]
