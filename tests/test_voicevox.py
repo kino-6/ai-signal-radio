@@ -97,7 +97,7 @@ def test_apply_pronunciations_accepts_context_specific_pairs() -> None:
 
 def test_normalize_for_tts_applies_technical_defaults() -> None:
     text = normalize_for_tts(
-        "AI, LLM, API, SDK, Vercel AI SDK, LangGraph, AWS Bedrock, SQLite, Axe, Unix, CLI, GitHub."
+        "AI, LLM, API, SDK, Vercel AI SDK, LangGraph, AWS Bedrock, SQLite, Axe, Unix, CLI, GitHub, Harness, OR."
     )
 
     assert "エーアイ" in text
@@ -112,6 +112,15 @@ def test_normalize_for_tts_applies_technical_defaults() -> None:
     assert "ユニックス" in text
     assert "シーエルアイ" in text
     assert "ギットハブ" in text
+    assert "ハーネス" in text
+    assert "オーアール" in text
+
+
+def test_normalize_for_tts_repairs_known_generated_misreadings() -> None:
+    text = normalize_for_tts("推論や行動の基盤となるハナースとして進化しています。")
+
+    assert "ハーネス" in text
+    assert "ハナース" not in text
 
 
 def test_normalize_for_tts_lets_profile_override_defaults() -> None:

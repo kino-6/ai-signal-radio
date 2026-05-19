@@ -199,6 +199,50 @@ def test_briefing_style_collapses_topic_clusters() -> None:
     assert "## 1. Sova AIのモバイルエージェントがGoogle Playで却下" in script
 
 
+def test_briefing_keeps_selected_non_representative_notes_from_different_clusters() -> None:
+    notes = [
+        WikiNote(
+            title="Code as Agent Harness",
+            source="arxiv-ai",
+            source_url="https://example.com/arxiv-1",
+            source_type="arxiv",
+            published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            tags=("ai",),
+            fact_summary="コードをエージェント実行基盤として扱う研究です。",
+            interpretation="エージェント実装の設計に関係します。",
+            action_items=("論文を確認する",),
+            topic_cluster_id="topic-agent",
+            topic_cluster_label="Agent",
+            topic_cluster_size=5,
+            topic_cluster_representative=False,
+        ),
+        WikiNote(
+            title="Vision-OPD",
+            source="arxiv-ai",
+            source_url="https://example.com/arxiv-2",
+            source_type="arxiv",
+            published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            collected_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            tags=("ai",),
+            fact_summary="マルチモーダルLLMの細部認識を扱う研究です。",
+            interpretation="評価と視覚モデル改善に関係します。",
+            action_items=("実験設定を確認する",),
+            topic_cluster_id="topic-vision",
+            topic_cluster_label="Vision",
+            topic_cluster_size=4,
+            topic_cluster_representative=False,
+        ),
+    ]
+
+    script = render_script(notes, style="briefing")
+
+    assert "今日の注目トピックは 2 件です。" in script
+    assert "収集した 2 件を、重複する話題をまとめて 2 トピックに整理しました。" not in script
+    assert "コードをエージェント実行基盤として扱う研究です。" in script
+    assert "マルチモーダルLLMの細部認識を扱う研究です。" in script
+
+
 def test_dialogue_style_renders_deep_dive() -> None:
     note = WikiNote(
         title="Google banned our mobile AI agent app",

@@ -395,6 +395,13 @@ def _unique_nonempty(values: list[str]) -> list[str]:
 
 
 def representative_notes(notes: list[WikiNote]) -> list[WikiNote]:
+    """Collapse duplicate clusters only within the selected notes.
+
+    A note can be non-representative in the full collected corpus while still
+    being intentionally selected for the daily briefing after source/topic
+    diversity. In that case it should remain in the script.
+    """
+
     seen_clusters: set[str] = set()
     representatives: list[WikiNote] = []
     for note in notes:
@@ -403,8 +410,6 @@ def representative_notes(notes: list[WikiNote]) -> list[WikiNote]:
             continue
         if cluster_id:
             seen_clusters.add(cluster_id)
-        if note.topic_cluster_size > 1 and not note.topic_cluster_representative:
-            continue
         representatives.append(note)
     return representatives
 
