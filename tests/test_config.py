@@ -32,6 +32,7 @@ def test_load_config_reads_ranker_source_diversity(tmp_path) -> None:
     path.write_text(
         """
 ranker:
+  max_topic_cluster_items: 2
   min_source_types:
     arxiv: 2
     rss: 1
@@ -43,5 +44,6 @@ ranker:
 
     config = load_config(path)
 
+    assert config.ranker.max_topic_cluster_items == 2
     assert config.ranker.min_source_types == {"arxiv": 2, "rss": 1}
     assert config.ranker.max_source_types == {"hackernews": 2}

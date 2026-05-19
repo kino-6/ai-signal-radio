@@ -36,6 +36,7 @@ class RankerConfig:
     research_bonus: float = 2.0
     hn_points_divisor: float = 100.0
     hn_points_cap: float = 3.0
+    max_topic_cluster_items: int = 1
     min_source_types: dict[str, int] = field(default_factory=lambda: {"arxiv": 1})
     max_source_types: dict[str, int] = field(default_factory=lambda: {"hackernews": 3})
 
@@ -94,6 +95,7 @@ def _load_ranker(raw: dict[str, Any]) -> RankerConfig:
         research_bonus=float(raw.get("research_bonus", 2.0)),
         hn_points_divisor=float(raw.get("hn_points_divisor", 100.0)),
         hn_points_cap=float(raw.get("hn_points_cap", 3.0)),
+        max_topic_cluster_items=max(1, int(raw.get("max_topic_cluster_items", 1))),
         min_source_types=_int_mapping(raw.get("min_source_types"), {"arxiv": 1}),
         max_source_types=_int_mapping(raw.get("max_source_types"), {"hackernews": 3}),
     )

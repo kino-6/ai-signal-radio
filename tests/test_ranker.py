@@ -152,3 +152,81 @@ def test_rank_items_uses_configurable_source_limits() -> None:
 
     assert sum(item.source_type == "hackernews" for item in ranked) <= 1
     assert any(item.source_type == "rss" for item in ranked)
+
+
+def test_rank_items_prefers_distant_topic_clusters_for_daily_selection() -> None:
+    published = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    sova_items = [
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title=f"Sova AI Android agent follow-up {index}",
+            url=f"https://news.ycombinator.com/item?id=sova-{index}",
+            published_at=published,
+            tags=("ai", "agent"),
+            metadata={"points": 500 - index},
+        )
+        for index in range(3)
+    ]
+    other_items = [
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title="OpenHarness terminal coding agent ships",
+            url="https://news.ycombinator.com/item?id=open-harness",
+            published_at=published,
+            tags=("llm", "coding"),
+            metadata={"points": 120},
+        ),
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title="Local LLM observability with SQLite",
+            url="https://news.ycombinator.com/item?id=sqlite",
+            published_at=published,
+            tags=("llm", "local-first"),
+            metadata={"points": 80},
+        ),
+    ]
+
+    ranked = rank_items([*sova_items, *other_items], limit=3)
+
+    cluster_ids = [
+        item.metadata["topic_cluster"]["id"]
+        for item in ranked
+        if isinstance(item.metadata.get("topic_cluster"), dict)
+    ]
+    assert len(ranked) == 3
+    assert len(set(cluster_ids)) == 3
+    assert sum("Sova AI" in item.title for item in ranked) == 1
+
+
+def test_rank_items_can_allow_multiple_items_from_same_topic_cluster() -> None:
+    published = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    items = [
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title=f"Sova AI Android agent follow-up {index}",
+            url=f"https://news.ycombinator.com/item?id=sova-{index}",
+            published_at=published,
+            tags=("ai", "agent"),
+            metadata={"points": 500 - index},
+        )
+        for index in range(3)
+    ]
+    items.append(
+        NewsItem(
+            source="hacker-news-ai",
+            source_type="hackernews",
+            title="OpenHarness terminal coding agent ships",
+            url="https://news.ycombinator.com/item?id=open-harness",
+            published_at=published,
+            tags=("llm", "coding"),
+            metadata={"points": 120},
+        )
+    )
+
+    ranked = rank_items(items, limit=3, config=RankerConfig(max_topic_cluster_items=2))
+
+    assert sum("Sova AI" in item.title for item in ranked) == 2

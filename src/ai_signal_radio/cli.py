@@ -20,7 +20,6 @@ from ai_signal_radio.models import NewsItem, PipelineResult
 from ai_signal_radio.processors.dedupe import DedupeResult, dedupe_items, dedupe_items_with_report
 from ai_signal_radio.processors.ranker import rank_items
 from ai_signal_radio.processors.script_writer import write_script
-from ai_signal_radio.processors.topic_cluster import cluster_items
 from ai_signal_radio.processors.wiki_writer import (
     Summarizer,
     load_wiki_notes,
@@ -733,7 +732,7 @@ def _process_items(
 ) -> tuple[DedupeResult, list[NewsItem], list[NewsItem]]:
     dedupe_result = dedupe_items_with_report(items)
     ranked = rank_items(dedupe_result.selected_items, limit=limit, config=ranker_config)
-    processed = cluster_items(_with_dedupe_notes(ranked, dedupe_result))
+    processed = _with_dedupe_notes(ranked, dedupe_result)
     return dedupe_result, ranked, processed
 
 

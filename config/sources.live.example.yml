@@ -34,6 +34,7 @@ ranker:
   research_bonus: 2.0
   hn_points_divisor: 100.0
   hn_points_cap: 3.0
+  max_topic_cluster_items: 1
   min_source_types:
     arxiv: 1
   max_source_types:

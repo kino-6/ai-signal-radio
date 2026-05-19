@@ -7,6 +7,7 @@ from typing import Any
 
 from ai_signal_radio.config import RankerConfig
 from ai_signal_radio.models import NewsItem
+from ai_signal_radio.processors.topic_cluster import cluster_items
 
 KEYWORDS = (
     "model",
@@ -29,7 +30,7 @@ def rank_items(
 ) -> list[NewsItem]:
     ranker_config = config or RankerConfig()
     scored = [_with_score_breakdown(item, ranker_config) for item in items]
-    ordered = sorted(scored, key=_sort_key, reverse=True)
+    ordered = cluster_items(sorted(scored, key=_sort_key, reverse=True))
     return _select_with_source_diversity(ordered, limit, ranker_config)
 
 
@@ -91,13 +92,20 @@ def _select_with_source_diversity(
 
     selected: list[NewsItem] = []
     selected_ids: set[str] = set()
+    selected_cluster_counts: dict[str, int] = {}
 
     min_by_type = _minimum_source_type_counts(items, limit, config)
     for source_type, minimum in min_by_type.items():
         for item in _items_of_type(items, source_type):
             if _source_type_count(selected, source_type) >= minimum:
                 break
-            _append_if_room(selected, selected_ids, item, limit)
+            if _topic_cluster_count(selected_cluster_counts, item) >= config.max_topic_cluster_items:
+                continue
+            _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
+        for item in _items_of_type(items, source_type):
+            if _source_type_count(selected, source_type) >= minimum:
+                break
+            _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
 
     max_by_type = _maximum_source_type_counts(limit, config)
     for item in items:
@@ -106,12 +114,27 @@ def _select_with_source_diversity(
         type_limit = max_by_type.get(item.source_type)
         if type_limit is not None and _source_type_count(selected, item.source_type) >= type_limit:
             continue
-        _append_if_room(selected, selected_ids, item, limit)
+        if _topic_cluster_count(selected_cluster_counts, item) >= config.max_topic_cluster_items:
+            continue
+        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
         if len(selected) >= limit:
             break
 
-    # If diversity caps leave empty seats, fill them with the best remaining
-    # items only when there is no other source type to balance against.
+    # First relax topic caps to fill seats with the best remaining items while
+    # still preserving source balance. Deep-dive scripts can still see cluster
+    # size in metadata even when the daily selection uses one representative.
+    for item in items:
+        if len(selected) >= limit:
+            break
+        if item.id in selected_ids:
+            continue
+        type_limit = max_by_type.get(item.source_type)
+        if type_limit is not None and _source_type_count(selected, item.source_type) >= type_limit:
+            continue
+        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
+
+    # If source diversity caps leave empty seats, fill them with the best
+    # remaining items only when there is no other source type to balance against.
     source_types = {item.source_type for item in items}
     relax_caps = len(source_types) <= 1
     for item in items:
@@ -124,7 +147,7 @@ def _select_with_source_diversity(
             and _source_type_count(selected, item.source_type) >= type_limit
         ):
             continue
-        _append_if_room(selected, selected_ids, item, limit)
+        _append_if_room(selected, selected_ids, selected_cluster_counts, item, limit)
 
     return sorted(selected, key=_sort_key, reverse=True)
 
@@ -161,11 +184,32 @@ def _source_type_count(items: list[NewsItem], source_type: str) -> int:
 
 
 def _append_if_room(
-    selected: list[NewsItem], selected_ids: set[str], item: NewsItem, limit: int
+    selected: list[NewsItem],
+    selected_ids: set[str],
+    selected_cluster_counts: dict[str, int],
+    item: NewsItem,
+    limit: int,
 ) -> None:
     if len(selected) < limit and item.id not in selected_ids:
         selected.append(item)
         selected_ids.add(item.id)
+        cluster_id = _topic_cluster_id(item)
+        if cluster_id:
+            selected_cluster_counts[cluster_id] = selected_cluster_counts.get(cluster_id, 0) + 1
+
+
+def _topic_cluster_count(selected_cluster_counts: dict[str, int], item: NewsItem) -> int:
+    cluster_id = _topic_cluster_id(item)
+    if not cluster_id:
+        return 0
+    return selected_cluster_counts.get(cluster_id, 0)
+
+
+def _topic_cluster_id(item: NewsItem) -> str:
+    cluster = item.metadata.get("topic_cluster")
+    if not isinstance(cluster, dict):
+        return ""
+    return str(cluster.get("id", ""))
 
 
 def _sort_key(item: NewsItem) -> tuple[float, float]:
