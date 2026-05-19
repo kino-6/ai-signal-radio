@@ -47,6 +47,19 @@ OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 VOICEVOX_URL="${VOICEVOX_URL:-http://127.0.0.1:50021}"
 VOICEVOX_APP_NAME="${VOICEVOX_APP_NAME:-VOICEVOX}"
 
+require_option_value() {
+  local option_name="$1"
+  local option_value="${2:-}"
+
+  if [[ -z "$option_value" || "$option_value" == --* ]]; then
+    echo "error: $option_name requires a value" >&2
+    usage >&2
+    exit 2
+  fi
+
+  printf '%s' "$option_value"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --install-uv)
@@ -76,11 +89,11 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --ollama-model)
-      OLLAMA_MODEL="${2:-}"
+      OLLAMA_MODEL="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --ollama-url)
-      OLLAMA_URL="${2:-}"
+      OLLAMA_URL="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --check-voicevox)
@@ -93,15 +106,15 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --voicevox-url)
-      VOICEVOX_URL="${2:-}"
+      VOICEVOX_URL="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --voicevox-app)
-      VOICEVOX_APP_NAME="${2:-}"
+      VOICEVOX_APP_NAME="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --venv)
-      PROJECT_VENV="${2:-}"
+      PROJECT_VENV="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     -h|--help)
