@@ -1,0 +1,57 @@
+name: ai-process-improvement
+program_title: "AI Process Improvement Radio"
+deep_dive_title: "AI Process Improvement Deep Dive"
+briefing_intro: "今日のAIプロセス改善ニュースです。"
+deep_dive_intro: "AI Process Improvement Radio の深掘りです。"
+audience: "業務改善担当者・開発リーダー"
+interpretation_lens: "業務フロー、開発プロセス、自動化、ナレッジ共有、コスト削減、ROI"
+closing_line: "それでは、今日もよい改善を。"
+focus_action_line: "今日の確認観点は、話題を読むだけで終わらせず、自分の業務フローのどこを小さく改善できるかに分解することです。"
+default_tags:
+  - ai-process-improvement
+action_items:
+  - "元情報を読み、どの業務プロセスに適用できるか確認する。"
+  - "小さく試せる自動化、レビュー、ナレッジ共有の改善点を1つ選ぶ。"
+score_keywords:
+  - workflow
+  - automation
+  - productivity
+  - process
+  - operations
+  - knowledge
+  - documentation
+  - review
+  - support
+  - efficiency
+  - business process
+  - enterprise
+  - roi
+  - cost
+  - agent
+official_sources:
+  - microsoft
+  - google
+  - openai
+  - anthropic
+  - github
+  - atlassian
+  - servicenow
+  - salesforce
+  - mckinsey
+  - deloitte
+cluster_common_words:
+  - workflow
+  - workflows
+  - process
+  - processes
+  - productivity
+  - automation
+  - operations
+  - business
+  - enterprise
+cluster_product_stopwords:
+  - AI
+  - LLM
+  - ROI
+  - BPM
+  - RPA

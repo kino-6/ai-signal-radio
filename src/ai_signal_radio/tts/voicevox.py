@@ -144,6 +144,7 @@ DEFAULT_TECHNICAL_PRONUNCIATIONS: PronunciationPairs = (
     ("OpenHarness", "オープンハーネス"),
     ("Harness", "ハーネス"),
     ("ハナース", "ハーネス"),
+    ("ハーンセス", "ハーネス"),
     ("OpenAI", "オープンエーアイ"),
     ("Anthropic", "アンソロピック"),
     ("Gemini", "ジェミニ"),

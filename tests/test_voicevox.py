@@ -117,10 +117,11 @@ def test_normalize_for_tts_applies_technical_defaults() -> None:
 
 
 def test_normalize_for_tts_repairs_known_generated_misreadings() -> None:
-    text = normalize_for_tts("推論や行動の基盤となるハナースとして進化しています。")
+    text = normalize_for_tts("推論や行動の基盤となるハナース、またはハーンセスとして進化しています。")
 
-    assert "ハーネス" in text
+    assert text.count("ハーネス") == 2
     assert "ハナース" not in text
+    assert "ハーンセス" not in text
 
 
 def test_normalize_for_tts_lets_profile_override_defaults() -> None:

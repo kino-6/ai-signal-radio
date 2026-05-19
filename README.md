@@ -169,6 +169,7 @@ uv run ai-signal run \
 別トピックのサンプル:
 
 - `config/topics/ai.yml`: AI / LLM / agent / model 向け
+- `config/topics/ai-process-improvement.yml`: AI を用いた業務・開発プロセス改善向け
 - `config/topics/security.yml`: 脆弱性、CVE、パッチ、運用リスク向け
 - `config/topics/developer-tools.yml`: CLI、SDK、IDE、CI/CD、開発ワークフロー向け
 
@@ -185,11 +186,28 @@ uv run ai-signal run \
   --script-style briefing
 ```
 
+AI を用いたプロセス改善向けサンプルを試す場合:
+
+```bash
+uv run ai-signal run \
+  --config config/sources.ai-process-improvement.example.yml \
+  --topic config/topics/ai-process-improvement.yml \
+  --collect-limit 40 \
+  --limit 8 \
+  --script-style briefing
+```
+
 `best-current-run.sh` で音声までまとめる場合:
 
 ```bash
 CONFIG=config/sources.security.example.yml \
 TOPIC=config/topics/security.yml \
+bash scripts/best-current-run.sh
+```
+
+```bash
+CONFIG=config/sources.ai-process-improvement.example.yml \
+TOPIC=config/topics/ai-process-improvement.yml \
 bash scripts/best-current-run.sh
 ```
 
@@ -265,10 +283,12 @@ topic clustering は、product term と keyword overlap を使った軽量な決
 config/
   sources.example.yml
   sources.live.example.yml
+  sources.ai-process-improvement.example.yml
   sources.security.example.yml
   pronunciations.example.yml
   topics/
     ai.yml
+    ai-process-improvement.yml
     security.yml
     developer-tools.yml
 data/
