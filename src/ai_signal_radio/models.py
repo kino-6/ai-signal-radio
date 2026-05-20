@@ -218,6 +218,60 @@ class WikiNote:
 
 
 @dataclass(frozen=True)
+class EditorialReview:
+    """A topic-specific editorial judgment attached to a news item."""
+
+    relevance_score: int = 3
+    read_in_daily: bool = True
+    wiki_only: bool = False
+    why_relevant: str = ""
+    topic_angle: str = ""
+    spoken_title: str = ""
+    one_line_takeaway: str = ""
+    listen_action: str = ""
+    reject_reason: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "relevance_score", max(1, min(5, int(self.relevance_score))))
+        for field_name in (
+            "why_relevant",
+            "topic_angle",
+            "spoken_title",
+            "one_line_takeaway",
+            "listen_action",
+            "reject_reason",
+        ):
+            object.__setattr__(self, field_name, str(getattr(self, field_name)).strip())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "relevance_score": self.relevance_score,
+            "read_in_daily": self.read_in_daily,
+            "wiki_only": self.wiki_only,
+            "why_relevant": self.why_relevant,
+            "topic_angle": self.topic_angle,
+            "spoken_title": self.spoken_title,
+            "one_line_takeaway": self.one_line_takeaway,
+            "listen_action": self.listen_action,
+            "reject_reason": self.reject_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EditorialReview":
+        return cls(
+            relevance_score=int(data.get("relevance_score", 3)),
+            read_in_daily=bool(data.get("read_in_daily", True)),
+            wiki_only=bool(data.get("wiki_only", False)),
+            why_relevant=str(data.get("why_relevant", "")),
+            topic_angle=str(data.get("topic_angle", data.get("process_improvement_angle", ""))),
+            spoken_title=str(data.get("spoken_title", "")),
+            one_line_takeaway=str(data.get("one_line_takeaway", "")),
+            listen_action=str(data.get("listen_action", "")),
+            reject_reason=str(data.get("reject_reason", "")),
+        )
+
+
+@dataclass(frozen=True)
 class PipelineResult:
     collected_count: int
     deduped_count: int

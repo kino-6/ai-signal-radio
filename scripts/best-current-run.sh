@@ -16,6 +16,9 @@ Environment variables:
   SUMMARIZER=ollama
   OLLAMA_MODEL=gemma4:latest
   OLLAMA_URL=http://127.0.0.1:11434
+  EDITORIAL_SKILL=     Optional editorial skill YAML for topic-specific selection.
+  EDITORIAL_MODEL=gemma4:latest
+  EDITORIAL_URL=http://127.0.0.1:11434
   PROJECT_VENV=.venv     Virtual environment to activate before running uv.
   SPEECH_EDITOR=ollama   TTS speech editor: none or ollama.
   DEEP_DIVE=1          Generate deep-dive dialogue script and TTS text.
@@ -63,6 +66,9 @@ LIMIT="${LIMIT:-8}"
 SUMMARIZER="${SUMMARIZER:-ollama}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:latest}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
+EDITORIAL_SKILL="${EDITORIAL_SKILL:-}"
+EDITORIAL_MODEL="${EDITORIAL_MODEL:-$OLLAMA_MODEL}"
+EDITORIAL_URL="${EDITORIAL_URL:-$OLLAMA_URL}"
 SPEECH_EDITOR="${SPEECH_EDITOR:-ollama}"
 DEEP_DIVE="${DEEP_DIVE:-1}"
 DOCS="${DOCS:-1}"
@@ -232,6 +238,13 @@ run_cmd=(
 )
 if [[ "$SUMMARIZER" == "ollama" ]]; then
   run_cmd+=(--ollama-model "$OLLAMA_MODEL" --ollama-url "$OLLAMA_URL")
+fi
+if [[ -n "$EDITORIAL_SKILL" ]]; then
+  run_cmd+=(
+    --editorial-skill "$EDITORIAL_SKILL"
+    --editorial-model "$EDITORIAL_MODEL"
+    --editorial-url "$EDITORIAL_URL"
+  )
 fi
 "${run_cmd[@]}"
 

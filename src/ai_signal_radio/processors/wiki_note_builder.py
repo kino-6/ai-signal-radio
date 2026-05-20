@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from ai_signal_radio.config import TopicProfile
-from ai_signal_radio.models import NewsItem, WikiNote
+from ai_signal_radio.models import EditorialReview, NewsItem, WikiNote
 from ai_signal_radio.processors.headline import radio_title, rewrite_known_headline, shorten_headline
 
 
@@ -23,6 +23,7 @@ def note_from_item(item: NewsItem, topic_profile: TopicProfile | None = None) ->
     )
     score_reasons = score_reasons_from_item(item)
     cluster = topic_cluster_metadata(item)
+    review = editorial_review_metadata(item)
     source_coverage = f"Single item from {item.source} ({item.source_type})."
     if cluster["size"] > 1:
         source_coverage = (
@@ -40,10 +41,11 @@ def note_from_item(item: NewsItem, topic_profile: TopicProfile | None = None) ->
         fact_summary=summary,
         interpretation=interpretation,
         action_items=profile.action_items,
-        spoken_title=spoken_title_from_item(item),
-        one_line_takeaway=one_line_takeaway_from_item(item, summary),
-        why_it_matters=why_it_matters_from_item(item, interpretation, profile),
-        listen_action="次に見るポイントは、元情報で具体的な変更点を確認することです。",
+        spoken_title=review.spoken_title or spoken_title_from_item(item),
+        one_line_takeaway=review.one_line_takeaway or one_line_takeaway_from_item(item, summary),
+        why_it_matters=review.why_relevant or why_it_matters_from_item(item, interpretation, profile),
+        listen_action=review.listen_action
+        or "次に見るポイントは、元情報で具体的な変更点を確認することです。",
         score_reasons=score_reasons,
         source_coverage=source_coverage,
         dedupe_notes=dedupe_note,
@@ -156,3 +158,10 @@ def topic_cluster_metadata(item: NewsItem) -> dict[str, object]:
         "related_titles": tuple(str(title) for title in cluster.get("related_titles", ())),
         "related_sources": tuple(str(source) for source in cluster.get("related_sources", ())),
     }
+
+
+def editorial_review_metadata(item: NewsItem) -> EditorialReview:
+    review = item.metadata.get("editorial_review")
+    if isinstance(review, dict):
+        return EditorialReview.from_dict(review)
+    return EditorialReview()

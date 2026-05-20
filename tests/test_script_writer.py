@@ -346,6 +346,7 @@ def test_briefing_prefers_radio_note_fields() -> None:
     assert "今日覚えることは、番組用の要点を別に持つことです。" in script
     assert "なぜ重要かというと、要約文をそのまま読まずに済むからです。" in script
     assert "次に見るポイントは、生成された台本の聞きやすさです。" in script
+    assert "今日の確認観点です。次に見るポイントは、生成された台本の聞きやすさです。" in script
     assert "長い事実要約です。" not in script
     assert "長い解釈です。" not in script
 

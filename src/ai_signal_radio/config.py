@@ -128,6 +128,17 @@ class TopicProfile:
 
 
 @dataclass(frozen=True)
+class EditorialSkill:
+    name: str = "default"
+    audience: str = "AI開発者"
+    purpose: str = "収集したニュースから、日次ラジオで読む価値がある項目を選ぶ"
+    accept: tuple[str, ...] = field(default_factory=tuple)
+    reject: tuple[str, ...] = field(default_factory=tuple)
+    framing: str = "聞いたあとに確認する観点を短く示す"
+    relevance_threshold: int = 3
+
+
+@dataclass(frozen=True)
 class SourceConfig:
     name: str
     type: str
@@ -190,6 +201,17 @@ def load_topic_profile(path: Path) -> TopicProfile:
     if not isinstance(raw, dict):
         raise ValueError("topic profile must be a mapping")
     return _load_topic_profile(raw)
+
+
+def load_editorial_skill(path: Path) -> EditorialSkill:
+    if not path.exists():
+        raise FileNotFoundError(f"Editorial skill not found: {path}")
+
+    with path.open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("editorial skill must be a mapping")
+    return _load_editorial_skill(raw)
 
 
 def _load_source(raw: dict[str, Any]) -> SourceConfig:
@@ -267,6 +289,30 @@ def _load_topic_profile(raw: Any) -> TopicProfile:
         cluster_product_stopwords=_str_tuple(
             raw.get("cluster_product_stopwords"), default.cluster_product_stopwords
         ),
+    )
+
+
+def _load_editorial_skill(raw: Any) -> EditorialSkill:
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError("editorial skill config must be a mapping")
+    default = EditorialSkill()
+    radio_style = raw.get("radio_style") or {}
+    if radio_style is None:
+        radio_style = {}
+    if not isinstance(radio_style, dict):
+        raise ValueError("editorial radio_style must be a mapping")
+    threshold = int(raw.get("relevance_threshold", default.relevance_threshold))
+    return EditorialSkill(
+        name=str(raw.get("name", default.name)).strip() or default.name,
+        audience=str(raw.get("audience", default.audience)).strip() or default.audience,
+        purpose=str(raw.get("purpose", default.purpose)).strip() or default.purpose,
+        accept=_str_tuple(raw.get("accept"), default.accept),
+        reject=_str_tuple(raw.get("reject"), default.reject),
+        framing=str(radio_style.get("framing", raw.get("framing", default.framing))).strip()
+        or default.framing,
+        relevance_threshold=max(1, min(5, threshold)),
     )
 
 

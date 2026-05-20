@@ -171,7 +171,7 @@ def render_briefing_script(
             ]
         )
 
-    lines.extend([profile.focus_action_line, ""])
+    lines.extend([daily_listen_action_line(display_notes, profile), ""])
     lines.extend([profile.closing_line, ""])
     return "\n".join(lines)
 
@@ -315,6 +315,13 @@ def daily_focus_line(notes: list[WikiNote]) -> str:
     if _same_spoken_content(headline, takeaway):
         return f"今日はこれだけ覚えてください。{headline}です。"
     return f"今日はこれだけ覚えてください。{headline}。{takeaway}"
+
+
+def daily_listen_action_line(notes: list[WikiNote], profile: TopicProfile) -> str:
+    candidate = deep_dive_candidate(notes)
+    if candidate and candidate.listen_action.strip():
+        return f"今日の確認観点です。{_ensure_sentence(candidate.listen_action)}"
+    return profile.focus_action_line
 
 
 def deep_dive_candidate(notes: list[WikiNote]) -> WikiNote | None:

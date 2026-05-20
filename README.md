@@ -71,6 +71,7 @@ VOICEVOX engine が起動している場合は、最後に `data/audio/daily.wav
 COLLECT_LIMIT=60 LIMIT=12 OLLAMA_MODEL=gemma4:latest bash scripts/best-current-run.sh
 TOPIC=config/topics/ai.yml bash scripts/best-current-run.sh
 CONFIG=config/sources.security.example.yml TOPIC=config/topics/security.yml bash scripts/best-current-run.sh
+CONFIG=config/sources.ai-process-improvement.example.yml TOPIC=config/topics/ai-process-improvement.yml EDITORIAL_SKILL=config/editorial/ai-process-improvement.yml bash scripts/best-current-run.sh
 PLAY_AUDIO=0 bash scripts/best-current-run.sh
 PLAY_TARGET=deep-dive bash scripts/best-current-run.sh
 SPEECH_EDITOR=none bash scripts/best-current-run.sh
@@ -93,6 +94,57 @@ uv run ai-signal tts-script --input data/scripts/daily.md --output data/scripts/
 uv run ai-signal script --input data/wiki --output data/scripts/deep-dive.md --style dialogue
 uv run ai-signal tts-script --input data/scripts/deep-dive.md --output data/scripts/deep-dive.tts.txt --speaker 3 --host-speaker 3 --analyst-speaker 8
 uv run ai-signal docs
+```
+
+## Run Profile
+
+よく使う `run` の設定は JSON profile として export できます。業務利用で「会社用の daily」「セキュリティ確認用」「プロセス改善用」のような実行条件を揃えたいときに使います。
+
+```bash
+uv run ai-signal profile export \
+  --output config/profiles/company-daily.json \
+  --name "Company Daily" \
+  --config config/sources.ai-process-improvement.example.yml \
+  --topic config/topics/ai-process-improvement.yml \
+  --editorial-skill config/editorial/ai-process-improvement.yml \
+  --collect-limit 40 \
+  --limit 8 \
+  --summarizer ollama \
+  --script-style briefing
+```
+
+生成される JSON は、チーム内で共有しやすい camelCase の固定形式です。
+
+```json
+{
+  "version": 1,
+  "name": "Company Daily",
+  "config": "config/sources.ai-process-improvement.example.yml",
+  "dataDir": "data",
+  "topic": "config/topics/ai-process-improvement.yml",
+  "editorialSkill": "config/editorial/ai-process-improvement.yml",
+  "limit": 8,
+  "collectLimit": 40,
+  "summarizer": "ollama",
+  "ollamaModel": "gemma4:latest",
+  "ollamaUrl": "http://127.0.0.1:11434",
+  "scriptStyle": "briefing",
+  "editorialModel": "gemma4:latest",
+  "editorialUrl": "http://127.0.0.1:11434"
+}
+```
+
+import は `run --profile` で行います。profile の値は `run` に読み込まれ、同時に渡した CLI option があればそちらを優先します。
+
+```bash
+uv run ai-signal run --profile config/profiles/company-daily.json
+uv run ai-signal run --profile config/profiles/company-daily.json --limit 3
+```
+
+profile の中身だけ検証したい場合:
+
+```bash
+uv run ai-signal profile import --input config/profiles/company-daily.json --strict
 ```
 
 ## デモ実行
@@ -192,6 +244,7 @@ AI を用いたプロセス改善向けサンプルを試す場合:
 uv run ai-signal run \
   --config config/sources.ai-process-improvement.example.yml \
   --topic config/topics/ai-process-improvement.yml \
+  --editorial-skill config/editorial/ai-process-improvement.yml \
   --collect-limit 40 \
   --limit 8 \
   --script-style briefing
@@ -208,6 +261,7 @@ bash scripts/best-current-run.sh
 ```bash
 CONFIG=config/sources.ai-process-improvement.example.yml \
 TOPIC=config/topics/ai-process-improvement.yml \
+EDITORIAL_SKILL=config/editorial/ai-process-improvement.yml \
 bash scripts/best-current-run.sh
 ```
 
@@ -229,6 +283,35 @@ cp config/topics/ai.yml config/topics/my-topic.yml
 収集クエリは `config/sources*.yml` 側、読み方は `config/pronunciations*.yml` 側で管理します。
 
 各 source の `params` には `timeout_seconds` と `rate_limit_seconds` を指定できます。公開APIに連続アクセスしすぎないため、実ニュース用設定では小さな待機時間を入れています。
+
+## Editorial Skill
+
+topic profile は、語彙や番組の方向性を決める軽い設定です。`ai-process-improvement` のように抽象度が高い話題では、キーワードだけだと「この日次ラジオで読む価値があるか」の判断が難しくなります。
+
+そのため、必要なときだけ `--editorial-skill` でローカル Ollama の編集判断を追加できます。これは opt-in です。指定しなければ従来通り deterministic な選抜だけで動き、テストでも hidden network call はしません。
+
+```bash
+uv run ai-signal run \
+  --config config/sources.ai-process-improvement.example.yml \
+  --topic config/topics/ai-process-improvement.yml \
+  --editorial-skill config/editorial/ai-process-improvement.yml \
+  --editorial-model gemma4:latest \
+  --collect-limit 40 \
+  --limit 8 \
+  --script-style briefing
+```
+
+editorial pass は item ごとに `editorial_review` metadata を付けます。主なフィールドは次の通りです。
+
+- `relevance_score`: topic に対する関連度。1から5。
+- `read_in_daily`: daily briefing で読む候補にするか。
+- `wiki_only`: wiki には残すが daily では読まないか。
+- `reject_reason`: daily から外す理由。
+- `spoken_title`: 耳で聞きやすい見出し。
+- `one_line_takeaway`: ラジオ本文で使う1文要点。
+- `listen_action`: 聞いたあとに確認する観点。
+
+LLM 出力が壊れている場合や接続できない場合は、deterministic fallback を使います。LLM が daily から外した item も processed JSON に残るため、あとから判断理由を確認できます。
 
 ## Wiki 生成
 
@@ -281,6 +364,8 @@ topic clustering は、product term と keyword overlap を使った軽量な決
 
 ```text
 config/
+  editorial/
+    ai-process-improvement.yml
   sources.example.yml
   sources.live.example.yml
   sources.ai-process-improvement.example.yml
