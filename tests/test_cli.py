@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from ai_signal_radio import cli
 from ai_signal_radio.collectors.base import BaseCollector, CollectionError
 from ai_signal_radio.config import SourceConfig
-from ai_signal_radio.models import NewsItem
+from ai_signal_radio.models import EditorialReview, NewsItem
 from ai_signal_radio.storage import load_raw_items, save_raw_items
 
 
@@ -335,6 +335,174 @@ def test_run_command_separates_collect_limit_from_selection_limit(tmp_path, monk
     assert seen["collect_limit"] == 5
     assert result.collected_count == 5
     assert result.selected_count == 2
+
+
+def test_profile_export_command_writes_run_profile_json(tmp_path) -> None:
+    profile_path = tmp_path / "profiles" / "daily.json"
+
+    result = cli.profile_export_command(
+        output_path=profile_path,
+        name="Company Daily",
+        config_path=Path("config/sources.live.example.yml"),
+        topic_path=Path("config/topics/ai.yml"),
+        limit=8,
+        collect_limit=40,
+        source=("arxiv",),
+        summarizer_name="ollama",
+        script_style="briefing",
+    )
+
+    text = result.read_text(encoding="utf-8")
+
+    assert result == profile_path
+    assert '"name": "Company Daily"' in text
+    assert '"collectLimit": 40' in text
+    assert '"scriptStyle": "briefing"' in text
+
+
+def test_main_run_imports_profile_and_allows_cli_overrides(tmp_path, monkeypatch) -> None:
+    profile_path = tmp_path / "daily.json"
+    profile_path.write_text(
+        """
+{
+  "version": 1,
+  "name": "Company Daily",
+  "config": "config/sources.live.example.yml",
+  "dataDir": "profile-data",
+  "topic": "config/topics/ai.yml",
+  "editorialSkill": "config/editorial/ai-process-improvement.yml",
+  "limit": 8,
+  "collectLimit": 40,
+  "source": ["arxiv"],
+  "summarizer": "ollama",
+  "ollamaModel": "gemma4:latest",
+  "scriptStyle": "briefing"
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_run_command(**kwargs):
+        seen.update(kwargs)
+        return cli.PipelineResult(
+            collected_count=0,
+            deduped_count=0,
+            selected_count=0,
+            raw_path="raw",
+            wiki_path="wiki",
+            script_path="script",
+            processed_path="processed",
+        )
+
+    monkeypatch.setattr(cli, "run_command", fake_run_command)
+
+    exit_code = cli.main(
+        [
+            "run",
+            "--profile",
+            str(profile_path),
+            "--limit",
+            "3",
+            "--source",
+            "hackernews",
+        ]
+    )
+
+    assert exit_code == 0
+    assert seen["config_path"] == Path("config/sources.live.example.yml")
+    assert seen["data_dir"] == Path("profile-data")
+    assert seen["topic_path"] == Path("config/topics/ai.yml")
+    assert seen["editorial_skill_path"] == Path("config/editorial/ai-process-improvement.yml")
+    assert seen["collect_limit"] == 40
+    assert seen["limit"] == 3
+    assert seen["source_filter"] == ("hackernews",)
+    assert seen["summarizer_name"] == "ollama"
+    assert seen["ollama_model"] == "gemma4:latest"
+    assert seen["script_style"] == "briefing"
+
+
+def test_process_items_keeps_editorial_rejected_items_in_processed_output() -> None:
+    published = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    items = [
+        NewsItem(
+            source="demo",
+            source_type="demo",
+            title="AI workflow review automation",
+            url="https://example.com/keep",
+            published_at=published,
+            tags=("ai", "workflow"),
+        ),
+        NewsItem(
+            source="demo",
+            source_type="demo",
+            title="AI model benchmark only",
+            url="https://example.com/wiki-only",
+            published_at=published,
+            tags=("ai",),
+        ),
+    ]
+
+    def reviewer(item: NewsItem) -> EditorialReview:
+        if "benchmark" in item.title:
+            return EditorialReview(
+                relevance_score=2,
+                read_in_daily=False,
+                wiki_only=True,
+                reject_reason="プロセス改善から遠いため。",
+            )
+        return EditorialReview(
+            relevance_score=5,
+            read_in_daily=True,
+            spoken_title="AIレビュー工程の改善",
+            one_line_takeaway="レビュー工程の待ち時間を減らせます。",
+        )
+
+    _, ranked, processed = cli._process_items(items, limit=1, editorial_reviewer=reviewer)
+
+    assert [item.title for item in ranked] == ["AI workflow review automation"]
+    assert len(processed) == 2
+    assert all("editorial_review" in item.metadata for item in processed)
+    assert any(item.metadata["editorial_review"]["wiki_only"] is True for item in processed)
+    assert any(item.metadata["selected_for_daily"] is False for item in processed)
+
+
+def test_run_command_wires_editorial_skill_to_processed_json(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "sources.yml"
+    skill_path = tmp_path / "editorial.yml"
+    config_path.write_text("sources: []\n", encoding="utf-8")
+    skill_path.write_text("name: process\n", encoding="utf-8")
+
+    def fake_reviewer(item: NewsItem) -> EditorialReview:
+        return EditorialReview(
+            relevance_score=5,
+            read_in_daily=True,
+            spoken_title="編集済みタイトル",
+            one_line_takeaway="編集済み要点です。",
+            listen_action="編集済みアクションです。",
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "build_editorial_reviewer",
+        lambda skill, editorial_model, editorial_url, topic_profile=None: fake_reviewer,
+    )
+
+    result = cli.run_command(
+        config_path=config_path,
+        data_dir=tmp_path / "data",
+        limit=1,
+        editorial_skill_path=skill_path,
+        script_style="briefing",
+    )
+
+    processed = load_raw_items(Path(result.processed_path))
+    script = Path(result.script_path).read_text(encoding="utf-8")
+
+    assert processed[0].metadata["editorial_review"]["spoken_title"] == "編集済みタイトル"
+    assert processed[0].metadata["selected_for_daily"] is True
+    assert "編集済みタイトル" in script
+    assert "編集済み要点です。" in script
 
 
 def test_write_pipeline_outputs_uses_single_run_timestamp(tmp_path) -> None:

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ai_signal_radio.models import NewsItem
+from ai_signal_radio.models import EditorialReview, NewsItem
 
 
 def test_news_item_normalizes_and_serializes() -> None:
@@ -57,3 +57,26 @@ def test_wiki_note_serializes_radio_fields() -> None:
     assert restored.one_line_takeaway
     assert restored.why_it_matters
     assert restored.listen_action
+
+
+def test_editorial_review_round_trips_and_clamps_score() -> None:
+    review = EditorialReview.from_dict(
+        {
+            "relevance_score": 9,
+            "read_in_daily": False,
+            "wiki_only": True,
+            "why_relevant": " プロセス改善に近い ",
+            "process_improvement_angle": "レビュー工程の改善",
+            "spoken_title": "AIレビュー改善",
+            "one_line_takeaway": "AIでレビュー工程を短くできます。",
+            "listen_action": "自分のレビュー工程を確認します。",
+            "reject_reason": "",
+        }
+    )
+
+    assert review.relevance_score == 5
+    assert review.read_in_daily is False
+    assert review.wiki_only is True
+    assert review.why_relevant == "プロセス改善に近い"
+    assert review.topic_angle == "レビュー工程の改善"
+    assert review.to_dict()["spoken_title"] == "AIレビュー改善"

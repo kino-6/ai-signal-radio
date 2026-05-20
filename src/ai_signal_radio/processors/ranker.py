@@ -92,13 +92,23 @@ def score_breakdown(
             ranker_config.hn_points_cap,
         )
 
-    total = round(keyword_score + official_source_bonus + research_bonus + hn_points_bonus, 2)
+    editorial_relevance_bonus = _editorial_relevance_bonus(item.metadata.get("editorial_review"))
+
+    total = round(
+        keyword_score
+        + official_source_bonus
+        + research_bonus
+        + hn_points_bonus
+        + editorial_relevance_bonus,
+        2,
+    )
     return {
         "keyword_matches": matched_keywords,
         "keyword_score": round(keyword_score, 2),
         "official_source_bonus": round(official_source_bonus, 2),
         "research_bonus": round(research_bonus, 2),
         "hn_points_bonus": round(hn_points_bonus, 2),
+        "editorial_relevance_bonus": round(editorial_relevance_bonus, 2),
         "topic_profile": profile.name,
         "total": total,
     }
@@ -257,3 +267,13 @@ def _topic_cluster_id(item: NewsItem) -> str:
 
 def _sort_key(item: NewsItem) -> tuple[float, float]:
     return (item.score, item.published_at.timestamp())
+
+
+def _editorial_relevance_bonus(review: object) -> float:
+    if not isinstance(review, dict):
+        return 0.0
+    try:
+        relevance_score = int(review.get("relevance_score", 0))
+    except (TypeError, ValueError):
+        return 0.0
+    return float(max(0, min(5, relevance_score)))

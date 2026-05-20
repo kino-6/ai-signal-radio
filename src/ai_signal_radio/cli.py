@@ -16,17 +16,21 @@ from ai_signal_radio.collectors.hackernews import HackerNewsCollector
 from ai_signal_radio.collectors.rss import RssCollector
 from ai_signal_radio.config import (
     AppConfig,
+    EditorialSkill,
     RankerConfig,
     SourceConfig,
     TopicProfile,
     load_config,
+    load_editorial_skill,
     load_topic_profile,
 )
+from ai_signal_radio.editorial import EditorialReviewer, OllamaEditorialReviewer
 from ai_signal_radio.docs_preview import DocsPreviewResult, build_mkdocs_preview
-from ai_signal_radio.models import NewsItem, PipelineResult
+from ai_signal_radio.models import EditorialReview, NewsItem, PipelineResult
 from ai_signal_radio.processors.dedupe import DedupeResult, dedupe_items, dedupe_items_with_report
 from ai_signal_radio.processors.ranker import rank_items
 from ai_signal_radio.processors.script_writer import write_script
+from ai_signal_radio.profiles import RunProfile, load_run_profile, write_run_profile
 from ai_signal_radio.processors.wiki_writer import (
     Summarizer,
     load_wiki_notes,
@@ -59,7 +63,8 @@ from ai_signal_radio.tts.speech_editor import OllamaSpeechEditor
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(raw_argv)
 
     if args.command == "collect":
         path = collect_command(
@@ -109,6 +114,40 @@ def main(argv: list[str] | None = None) -> int:
         if result.radio_path:
             print(f"Copied radio script: {result.radio_path}")
         return 0
+    if args.command == "profile":
+        if args.profile_command == "export":
+            path = profile_export_command(
+                output_path=args.output,
+                name=args.name,
+                config_path=args.config,
+                data_dir=args.data_dir,
+                topic_path=args.topic,
+                editorial_skill_path=args.editorial_skill,
+                limit=args.limit,
+                collect_limit=args.collect_limit,
+                source=tuple(args.source),
+                summarizer_name=args.summarizer,
+                ollama_model=args.ollama_model,
+                ollama_url=args.ollama_url,
+                script_style=args.script_style,
+                editorial_model=args.editorial_model,
+                editorial_url=args.editorial_url,
+            )
+            print(f"Wrote run profile: {path}")
+            return 0
+        if args.profile_command == "import":
+            try:
+                profile_doc = profile_import_command(args.input, strict=args.strict)
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            for warning in profile_doc.warnings:
+                print(f"warning: {warning}", file=sys.stderr)
+            print(f"Imported run profile: {profile_doc.profile.name}")
+            print(f"Run with: ai-signal run --profile {args.input}")
+            return 0
+        parser.print_help()
+        return 1
     if args.command == "tts":
         try:
             path = tts_command(
@@ -149,19 +188,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote TTS script: {path}")
         return 0
     if args.command == "run":
-        result = run_command(
-            config_path=args.config,
-            data_dir=args.data_dir,
-            limit=args.limit,
-            collect_limit=args.collect_limit,
-            source_filter=tuple(args.source),
-            dry_run=args.dry_run,
-            summarizer_name=args.summarizer,
-            ollama_model=args.ollama_model,
-            ollama_url=args.ollama_url,
-            script_style=args.script_style,
-            topic_path=args.topic,
-        )
+        try:
+            run_args = _resolve_run_profile_args(args, raw_argv)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        result = run_command(**run_args)
         _print_result(result)
         return 0
     if args.command == "rebuild":
@@ -174,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
             ollama_url=args.ollama_url,
             script_style=args.script_style,
             topic_path=args.topic,
+            editorial_skill_path=args.editorial_skill,
+            editorial_model=args.editorial_model,
+            editorial_url=args.editorial_url,
         )
         _print_result(result)
         return 0
@@ -232,6 +267,50 @@ def build_parser() -> argparse.ArgumentParser:
     docs.add_argument("--audio-dir", type=Path, default=Path("data/audio"))
     docs.add_argument("--processed", type=Path, default=Path("data/processed/latest.json"))
     docs.add_argument("--output", type=Path, default=Path("docs/generated"))
+
+    profile = subparsers.add_parser("profile", help="Import and export reusable run profiles.")
+    profile_subparsers = profile.add_subparsers(dest="profile_command")
+    profile_export = profile_subparsers.add_parser(
+        "export",
+        help="Write a JSON run profile from CLI options.",
+    )
+    profile_export.add_argument("--output", type=Path, required=True)
+    profile_export.add_argument("--name", required=True)
+    profile_export.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
+    profile_export.add_argument("--data-dir", type=Path, default=Path("data"))
+    profile_export.add_argument("--limit", type=int, default=20)
+    profile_export.add_argument(
+        "--collect-limit",
+        type=int,
+        default=None,
+        help="Number of items to collect per source before dedupe/ranking.",
+    )
+    profile_export.add_argument("--topic", type=Path, default=None)
+    profile_export.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        help="Source names or source types to store in the profile.",
+    )
+    add_summarizer_args(profile_export)
+    add_editorial_args(profile_export)
+    profile_export.add_argument(
+        "--script-style",
+        choices=("short", "standard", "detailed", "briefing", "dialogue"),
+        default="standard",
+        help="Control generated radio script length and detail.",
+    )
+
+    profile_import = profile_subparsers.add_parser(
+        "import",
+        help="Validate a JSON run profile before using it with run --profile.",
+    )
+    profile_import.add_argument("--input", type=Path, required=True)
+    profile_import.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail if the profile contains unknown keys.",
+    )
 
     tts = subparsers.add_parser("tts", help="Synthesize a Markdown script with local VOICEVOX.")
     tts.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
@@ -310,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
 
     run = subparsers.add_parser("run", help="Run collect, wiki, and script generation.")
+    run.add_argument("--profile", type=Path, default=None, help="Import reusable run settings JSON.")
     run.add_argument("--config", type=Path, default=Path("config/sources.example.yml"))
     run.add_argument("--data-dir", type=Path, default=Path("data"))
     run.add_argument("--limit", type=int, default=20, help="Number of final items to select.")
@@ -332,6 +412,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Collect and rank items, then print a preview without writing files.",
     )
     add_summarizer_args(run)
+    add_editorial_args(run)
     run.add_argument(
         "--script-style",
         choices=("short", "standard", "detailed", "briefing", "dialogue"),
@@ -348,6 +429,7 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--limit", type=int, default=20)
     rebuild.add_argument("--topic", type=Path, default=None, help="Optional topic profile YAML.")
     add_summarizer_args(rebuild)
+    add_editorial_args(rebuild)
     rebuild.add_argument(
         "--script-style",
         choices=("short", "standard", "detailed", "briefing", "dialogue"),
@@ -374,6 +456,168 @@ def add_summarizer_args(parser: argparse.ArgumentParser) -> None:
         default="http://127.0.0.1:11434",
         help="Ollama base URL used when --summarizer ollama is selected.",
     )
+
+
+def add_editorial_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--editorial-skill",
+        type=Path,
+        default=None,
+        help="Optional local editorial skill YAML for topic-specific daily selection.",
+    )
+    parser.add_argument(
+        "--editorial-model",
+        default="gemma4:latest",
+        help="Ollama model name used when --editorial-skill is selected.",
+    )
+    parser.add_argument(
+        "--editorial-url",
+        default="http://127.0.0.1:11434",
+        help="Ollama base URL used when --editorial-skill is selected.",
+    )
+
+
+def profile_export_command(
+    output_path: Path,
+    name: str,
+    config_path: Path = Path("config/sources.example.yml"),
+    data_dir: Path = Path("data"),
+    topic_path: Path | None = None,
+    editorial_skill_path: Path | None = None,
+    limit: int = 20,
+    collect_limit: int | None = None,
+    source: tuple[str, ...] = (),
+    summarizer_name: str = "placeholder",
+    ollama_model: str = "gemma4:latest",
+    ollama_url: str = "http://127.0.0.1:11434",
+    script_style: str = "standard",
+    editorial_model: str = "gemma4:latest",
+    editorial_url: str = "http://127.0.0.1:11434",
+) -> Path:
+    profile = RunProfile(
+        name=name,
+        config=str(config_path),
+        data_dir=str(data_dir),
+        topic=str(topic_path) if topic_path else None,
+        editorial_skill=str(editorial_skill_path) if editorial_skill_path else None,
+        limit=limit,
+        collect_limit=collect_limit,
+        source=source,
+        summarizer=summarizer_name,
+        ollama_model=ollama_model,
+        ollama_url=ollama_url,
+        script_style=script_style,
+        editorial_model=editorial_model,
+        editorial_url=editorial_url,
+    )
+    return write_run_profile(output_path, profile)
+
+
+def profile_import_command(input_path: Path, strict: bool = False):
+    return load_run_profile(input_path, strict=strict)
+
+
+def _resolve_run_profile_args(args: argparse.Namespace, argv: list[str]) -> dict[str, object]:
+    profile: RunProfile | None = None
+    if args.profile is not None:
+        profile_doc = load_run_profile(args.profile)
+        for warning in profile_doc.warnings:
+            print(f"warning: {warning}", file=sys.stderr)
+        profile = profile_doc.profile
+        print(f"Using run profile: {profile.name}")
+
+    return {
+        "config_path": Path(
+            _profile_value(args.config, profile.config if profile else None, argv, "--config")
+        ),
+        "data_dir": Path(
+            _profile_value(args.data_dir, profile.data_dir if profile else None, argv, "--data-dir")
+        ),
+        "limit": int(_profile_value(args.limit, profile.limit if profile else None, argv, "--limit")),
+        "collect_limit": _profile_value(
+            args.collect_limit,
+            profile.collect_limit if profile else None,
+            argv,
+            "--collect-limit",
+        ),
+        "source_filter": tuple(
+            _profile_source_value(args.source, profile.source if profile else (), argv)
+        ),
+        "dry_run": args.dry_run,
+        "summarizer_name": _profile_value(
+            args.summarizer,
+            profile.summarizer if profile else None,
+            argv,
+            "--summarizer",
+        ),
+        "ollama_model": _profile_value(
+            args.ollama_model,
+            profile.ollama_model if profile else None,
+            argv,
+            "--ollama-model",
+        ),
+        "ollama_url": _profile_value(
+            args.ollama_url,
+            profile.ollama_url if profile else None,
+            argv,
+            "--ollama-url",
+        ),
+        "script_style": _profile_value(
+            args.script_style,
+            profile.script_style if profile else None,
+            argv,
+            "--script-style",
+        ),
+        "topic_path": _profile_optional_path(args.topic, profile.topic if profile else None, argv, "--topic"),
+        "editorial_skill_path": _profile_optional_path(
+            args.editorial_skill,
+            profile.editorial_skill if profile else None,
+            argv,
+            "--editorial-skill",
+        ),
+        "editorial_model": _profile_value(
+            args.editorial_model,
+            profile.editorial_model if profile else None,
+            argv,
+            "--editorial-model",
+        ),
+        "editorial_url": _profile_value(
+            args.editorial_url,
+            profile.editorial_url if profile else None,
+            argv,
+            "--editorial-url",
+        ),
+    }
+
+
+def _profile_value(current: object, profile_value: object | None, argv: list[str], option: str):
+    if profile_value is not None and not _argv_has_option(argv, option):
+        return profile_value
+    return current
+
+
+def _profile_optional_path(
+    current: Path | None,
+    profile_value: str | None,
+    argv: list[str],
+    option: str,
+) -> Path | None:
+    value = _profile_value(current, profile_value, argv, option)
+    return Path(value) if value else None
+
+
+def _profile_source_value(
+    current: list[str],
+    profile_value: tuple[str, ...],
+    argv: list[str],
+) -> tuple[str, ...] | list[str]:
+    if profile_value and not _argv_has_option(argv, "--source"):
+        return profile_value
+    return current
+
+
+def _argv_has_option(argv: list[str], option: str) -> bool:
+    return any(value == option or value.startswith(f"{option}=") for value in argv)
 
 
 def collect_command(
@@ -609,6 +853,12 @@ def _load_topic_profile(topic_path: Path | None) -> TopicProfile:
     return load_topic_profile(topic_path)
 
 
+def _load_editorial_skill(editorial_skill_path: Path | None) -> EditorialSkill | None:
+    if editorial_skill_path is None:
+        return None
+    return load_editorial_skill(editorial_skill_path)
+
+
 def _role_speakers(host_speaker: int | None, analyst_speaker: int | None) -> dict[str, int]:
     return {
         role: speaker_id
@@ -632,10 +882,20 @@ def run_command(
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
     topic_path: Path | None = None,
+    editorial_skill_path: Path | None = None,
+    editorial_model: str = "gemma4:latest",
+    editorial_url: str = "http://127.0.0.1:11434",
 ) -> PipelineResult:
     run_at = datetime.now(timezone.utc)
     config = load_config(config_path) if config_path.exists() else AppConfig()
     topic_profile = _resolve_topic_profile(config, topic_path)
+    editorial_skill = _load_editorial_skill(editorial_skill_path)
+    editorial_reviewer = build_editorial_reviewer(
+        editorial_skill,
+        editorial_model,
+        editorial_url,
+        topic_profile,
+    )
     collection_limit = collect_limit if collect_limit is not None else limit
     collected, collection_failures = collect_all_with_report(
         build_collectors(config.sources, source_filter=source_filter),
@@ -646,6 +906,7 @@ def run_command(
         limit=limit,
         ranker_config=config.ranker,
         topic_profile=topic_profile,
+        editorial_reviewer=editorial_reviewer,
     )
 
     if dry_run:
@@ -675,6 +936,7 @@ def run_command(
             collect_limit=collection_limit,
             selection_limit=limit,
             topic_profile=topic_profile,
+            editorial_skill=editorial_skill,
         ),
         data_dir,
         run_id,
@@ -682,7 +944,7 @@ def run_command(
     )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url, topic_profile)
     wiki_path, script_path = _write_pipeline_outputs(
-        processed,
+        ranked,
         data_dir,
         run_id=run_id,
         run_at=run_at,
@@ -712,14 +974,25 @@ def rebuild_command(
     ollama_url: str = "http://127.0.0.1:11434",
     script_style: str = "standard",
     topic_path: Path | None = None,
+    editorial_skill_path: Path | None = None,
+    editorial_model: str = "gemma4:latest",
+    editorial_url: str = "http://127.0.0.1:11434",
 ) -> PipelineResult:
     run_at = datetime.now(timezone.utc)
     items = load_raw_items(input_path)
     topic_profile = _load_topic_profile(topic_path)
+    editorial_skill = _load_editorial_skill(editorial_skill_path)
+    editorial_reviewer = build_editorial_reviewer(
+        editorial_skill,
+        editorial_model,
+        editorial_url,
+        topic_profile,
+    )
     dedupe_result, ranked, processed = _process_items(
         items,
         limit=limit,
         topic_profile=topic_profile,
+        editorial_reviewer=editorial_reviewer,
     )
     ensure_data_dirs(data_dir)
     run_id = timestamp_slug(run_at)
@@ -735,6 +1008,7 @@ def rebuild_command(
             collect_limit=len(items),
             selection_limit=limit,
             topic_profile=topic_profile,
+            editorial_skill=editorial_skill,
         ),
         data_dir,
         run_id,
@@ -742,7 +1016,7 @@ def rebuild_command(
     )
     summarizer = build_summarizer(summarizer_name, ollama_model, ollama_url, topic_profile)
     wiki_path, script_path = _write_pipeline_outputs(
-        processed,
+        ranked,
         data_dir,
         run_id=run_id,
         run_at=run_at,
@@ -797,7 +1071,7 @@ def demo_command(
         now=run_at,
     )
     wiki_path, script_path = _write_pipeline_outputs(
-        processed,
+        ranked,
         data_dir,
         run_id=run_id,
         run_at=run_at,
@@ -852,15 +1126,42 @@ def _process_items(
     limit: int,
     ranker_config: RankerConfig | None = None,
     topic_profile: TopicProfile | None = None,
+    editorial_reviewer: EditorialReviewer | None = None,
 ) -> tuple[DedupeResult, list[NewsItem], list[NewsItem]]:
     dedupe_result = dedupe_items_with_report(items)
-    ranked = rank_items(
+    if editorial_reviewer is None:
+        ranked = rank_items(
+            dedupe_result.selected_items,
+            limit=limit,
+            config=ranker_config,
+            topic_profile=topic_profile,
+        )
+        processed = _with_dedupe_notes(ranked, dedupe_result)
+        return dedupe_result, processed, processed
+
+    candidate_limit = max(limit * 3, limit)
+    candidates = rank_items(
         dedupe_result.selected_items,
+        limit=candidate_limit,
+        config=ranker_config,
+        topic_profile=topic_profile,
+    )
+    reviewed = _with_editorial_reviews(candidates, editorial_reviewer)
+    eligible = _editorial_daily_candidates(reviewed)
+    if not eligible:
+        eligible = reviewed
+    ranked = rank_items(
+        eligible,
         limit=limit,
         config=ranker_config,
         topic_profile=topic_profile,
     )
-    processed = _with_dedupe_notes(ranked, dedupe_result)
+    ranked = _with_dedupe_notes(ranked, dedupe_result)
+    selected_ids = {item.id for item in ranked}
+    processed = _with_dedupe_notes(
+        _with_selection_metadata(reviewed, selected_ids),
+        dedupe_result,
+    )
     return dedupe_result, ranked, processed
 
 
@@ -883,6 +1184,44 @@ def _with_dedupe_notes(items: list[NewsItem], result: DedupeResult) -> list[News
         }
         processed.append(replace(item, metadata=metadata))
     return processed
+
+
+def _with_editorial_reviews(
+    items: list[NewsItem],
+    editorial_reviewer: EditorialReviewer,
+) -> list[NewsItem]:
+    reviewed: list[NewsItem] = []
+    for item in items:
+        review = editorial_reviewer(item)
+        metadata = dict(item.metadata)
+        metadata["editorial_review"] = review.to_dict()
+        reviewed.append(replace(item, metadata=metadata))
+    return reviewed
+
+
+def _editorial_daily_candidates(items: list[NewsItem]) -> list[NewsItem]:
+    candidates: list[NewsItem] = []
+    for item in items:
+        review = _editorial_review(item)
+        if review.read_in_daily and not review.wiki_only:
+            candidates.append(item)
+    return candidates
+
+
+def _with_selection_metadata(items: list[NewsItem], selected_ids: set[str]) -> list[NewsItem]:
+    processed: list[NewsItem] = []
+    for item in items:
+        metadata = dict(item.metadata)
+        metadata["selected_for_daily"] = item.id in selected_ids
+        processed.append(replace(item, metadata=metadata))
+    return processed
+
+
+def _editorial_review(item: NewsItem) -> EditorialReview:
+    review = item.metadata.get("editorial_review")
+    if isinstance(review, dict):
+        return EditorialReview.from_dict(review)
+    return EditorialReview()
 
 
 def build_collectors(
@@ -965,6 +1304,23 @@ def build_summarizer(
     raise ValueError(f"Unsupported summarizer: {name}")
 
 
+def build_editorial_reviewer(
+    skill: EditorialSkill | None,
+    editorial_model: str,
+    editorial_url: str,
+    topic_profile: TopicProfile | None = None,
+) -> EditorialReviewer | None:
+    if skill is None:
+        return None
+    print(f"Using local Ollama editorial reviewer: {editorial_model} at {editorial_url}")
+    return OllamaEditorialReviewer(
+        skill=skill,
+        model=editorial_model,
+        base_url=editorial_url,
+        topic_profile=topic_profile,
+    )
+
+
 def collect_all(collectors: list[BaseCollector], limit: int) -> list[NewsItem]:
     items, _ = collect_all_with_report(collectors, limit)
     return items
@@ -1013,12 +1369,14 @@ def _run_metadata(
     collect_limit: int | None = None,
     selection_limit: int | None = None,
     topic_profile: TopicProfile | None = None,
+    editorial_skill: EditorialSkill | None = None,
 ) -> dict[str, object]:
     profile = topic_profile or TopicProfile()
     return {
         "run_id": run_id,
         "run_at": run_at.astimezone(timezone.utc).isoformat() if run_at else "",
         "topic_profile": profile.name,
+        "editorial_skill": editorial_skill.name if editorial_skill else None,
         "collect_limit": collect_limit,
         "selection_limit": selection_limit,
         "collection_failures": collection_failures,

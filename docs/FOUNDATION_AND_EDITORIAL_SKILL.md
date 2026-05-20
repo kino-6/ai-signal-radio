@@ -161,24 +161,45 @@ bash scripts/best-current-run.sh
 
 ## Guardrails
 
-- [ ] editorial pass は明示的に有効化したときだけ動く
-- [ ] tests では hidden network call をしない
-- [ ] LLM failure 時は deterministic selection に fallback する
-- [ ] LLM 出力は JSON parse し、壊れた出力は採用しない
-- [ ] LLM が落とした item も processed JSON に `wiki_only` または `reject_reason` として残す
+- [x] editorial pass は明示的に有効化したときだけ動く
+- [x] tests では hidden network call をしない
+- [x] LLM failure 時は deterministic selection に fallback する
+- [x] LLM 出力は JSON parse し、壊れた出力は採用しない
+- [x] LLM が落とした item も processed JSON に `wiki_only` または `reject_reason` として残す
 - [ ] fact summary は入力情報だけを根拠にする
 - [ ] 推測は `open_questions` に逃がす
 
 ## Next Implementation Slice
 
-小さく始める。
+小さく始める。まずは LLM を呼ばずに contract を固定し、その後に opt-in で Ollama reviewer を挿す。
 
-- [ ] `EditorialSkill` config model を追加する
-- [ ] `OllamaEditorialReviewer` を追加する
-- [ ] item ごとに `editorial_review` metadata を保存する
-- [ ] `relevance_score` と `read_in_daily` を ranker 後の選抜に反映する
-- [ ] `ai-process-improvement` 用 editorial sample を追加する
-- [ ] fake transport で JSON parse / fallback のテストを追加する
+### Phase 1: Config And Data Contract
+
+- [x] `EditorialSkill` config model を追加する
+- [x] `EditorialReview` model を追加し、JSON 保存できる形を固定する
+- [x] `config/editorial/ai-process-improvement.yml` を topic sample として追加する
+- [x] config parse と default 値のテストを追加する
+
+### Phase 2: Local LLM Reviewer
+
+- [x] `OllamaEditorialReviewer` を追加する
+- [x] reviewer prompt は item の title / source / summary / score_breakdown / topic metadata だけを入力にする
+- [x] LLM 出力は JSON parse し、壊れた出力は deterministic fallback にする
+- [x] fake transport で JSON parse / fallback のテストを追加する
+
+### Phase 3: Pipeline Integration
+
+- [x] `run` / `rebuild` で `--editorial-skill` を受け取れるようにする
+- [x] item ごとに `editorial_review` metadata を保存する
+- [x] `relevance_score` と `read_in_daily` を final selection に反映する
+- [x] LLM が落とした item も processed JSON から消さず、理由を追えるようにする
+- [x] `best-current-run.sh` から `EDITORIAL_SKILL` / `EDITORIAL_MODEL` を渡せるようにする
+
+### Phase 4: Radio Output Quality
+
+- [x] `spoken_title` を briefing / deep dive の見出しに使う
+- [x] `one_line_takeaway` を daily briefing の本文に使う
+- [x] `listen_action` を締めの確認観点に反映する
 - [ ] 実ニュースで deterministic only と editorial pass の daily を比較する
 
 ## Current Judgment

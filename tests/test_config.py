@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ai_signal_radio.config import load_config, load_topic_profile
+from ai_signal_radio.config import load_config, load_editorial_skill, load_topic_profile
 
 
 def test_load_config_reads_tts_voice_controls(tmp_path) -> None:
@@ -119,3 +119,42 @@ def test_bundled_ai_process_improvement_source_example_is_loadable() -> None:
     ]
     assert "workflow automation" in config.sources[0].params["search_query"]
     assert config.sources[1].params["query"] == "AI automation"
+
+
+def test_load_editorial_skill_reads_topic_specific_contract(tmp_path) -> None:
+    path = tmp_path / "editorial.yml"
+    path.write_text(
+        """
+name: process
+audience: "業務改善担当者"
+purpose: "AIで業務プロセスを改善するニュースを選ぶ"
+relevance_threshold: 4
+accept:
+  - "AIでレビューを改善する話"
+reject:
+  - "モデル性能だけの話"
+radio_style:
+  framing: "業務に小さく試す観点を言う"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    skill = load_editorial_skill(path)
+
+    assert skill.name == "process"
+    assert skill.audience == "業務改善担当者"
+    assert skill.purpose == "AIで業務プロセスを改善するニュースを選ぶ"
+    assert skill.relevance_threshold == 4
+    assert skill.accept == ("AIでレビューを改善する話",)
+    assert skill.reject == ("モデル性能だけの話",)
+    assert skill.framing == "業務に小さく試す観点を言う"
+
+
+def test_bundled_ai_process_improvement_editorial_skill_is_loadable() -> None:
+    root = Path(__file__).resolve().parents[1]
+    skill = load_editorial_skill(root / "config" / "editorial" / "ai-process-improvement.yml")
+
+    assert skill.name == "ai-process-improvement"
+    assert skill.audience == "業務改善担当者・開発リーダー"
+    assert "業務フロー" in skill.accept[0]
+    assert "モデル性能だけ" in skill.reject[0]
